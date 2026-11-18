@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     dev_login: bool = True
     dev_billing: bool = True
 
-    # Claude (page generation and "말로 고치기"). Empty → rule-based fallback.
+    # Page generation and "말로 고치기". auto = OpenAI if its key is set, else Claude, else rules.
+    ai_provider: str = "auto"  # auto | openai | anthropic | rules
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.5"
+    openai_reasoning: str = "low"  # minimal | low | medium | high
     anthropic_api_key: str = ""
     claude_model: str = "claude-opus-5-5"
     claude_effort: str = "low"  # low | medium | high

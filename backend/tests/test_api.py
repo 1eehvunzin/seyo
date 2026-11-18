@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
-os.environ["ANTHROPIC_API_KEY"] = ""  # rule-based path, no network
+os.environ["AI_PROVIDER"] = "rules"  # rule-based path, no network
 
 import pytest
 from fastapi.testclient import TestClient

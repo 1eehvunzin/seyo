@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 import anthropic
+import openai
 from pydantic import BaseModel, Field
 
 from .config import get_settings
@@ -250,16 +251,64 @@ theme(색), big(d-day 크기), memo(메모 칸 켜고 끄기), dim(끝난 일 �
 할 수 없는 요청이면 change=none과 짧은 해요체 안내 message를 준다."""
 
 
-def _client() -> anthropic.AsyncAnthropic | None:
-    key = get_settings().anthropic_api_key
-    return anthropic.AsyncAnthropic(api_key=key) if key else None
+def provider() -> str:
+    s = get_settings()
+    if s.ai_provider != "auto":
+        return s.ai_provider
+    return "openai" if s.openai_api_key else "anthropic" if s.anthropic_api_key else "rules"
 
 
 async def _parse(system: str, user: str, schema: type[BaseModel]) -> BaseModel | None:
-    client = _client()
-    if client is None:
-        return None
+    p = provider()
+    if p == "openai" and get_settings().openai_api_key:
+        return await _parse_openai(system, user, schema)
+    if p == "anthropic" and get_settings().anthropic_api_key:
+        return await _parse_claude(system, user, schema)
+    return None
+
+
+_clients: dict[str, object] = {}
+
+
+def _openai() -> openai.AsyncOpenAI:
+    if "openai" not in _clients:
+        _clients["openai"] = openai.AsyncOpenAI(api_key=get_settings().openai_api_key, timeout=30)
+    return _clients["openai"]  # type: ignore[return-value]
+
+
+def _claude() -> anthropic.AsyncAnthropic:
+    if "anthropic" not in _clients:
+        _clients["anthropic"] = anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key)
+    return _clients["anthropic"]  # type: ignore[return-value]
+
+
+async def _parse_openai(system: str, user: str, schema: type[BaseModel]) -> BaseModel | None:
     s = get_settings()
+    client = _openai()
+    try:
+        resp = await client.responses.parse(
+            model=s.openai_model,
+            instructions=system,
+            input=user,
+            text_format=schema,
+            reasoning={"effort": s.openai_reasoning},
+            max_output_tokens=8000,
+        )
+    except openai.RateLimitError:
+        log.warning("openai rate limited; using rules")
+        return None
+    except openai.APIStatusError as e:
+        log.error("openai error %s: %s", e.status_code, e.message)
+        return None
+    except (openai.APIConnectionError, openai.LengthFinishReasonError, openai.ContentFilterFinishReasonError) as e:
+        log.warning("openai unusable (%s); using rules", type(e).__name__)
+        return None
+    return resp.output_parsed
+
+
+async def _parse_claude(system: str, user: str, schema: type[BaseModel]) -> BaseModel | None:
+    s = get_settings()
+    client = _claude()
     try:
         # Server-side fallbacks re-run a policy-declined request on another model in the same call.
         resp = await client.beta.messages.parse(
@@ -288,7 +337,7 @@ async def _parse(system: str, user: str, schema: type[BaseModel]) -> BaseModel |
 
 async def generate(prompt: str) -> tuple[dict, list[dict], list[str], str]:
     plan = await _parse(_GEN_SYSTEM, f"오늘 날짜: {date.today().isoformat()}\n요청: {prompt}", PagePlan)
-    source = "claude"
+    source = provider()
     if not isinstance(plan, PagePlan):
         plan, source = rules_plan(prompt), "rules"
     return plan_to_page(plan), [s.model_dump() for s in plan.steps], plan.follow_ups[:3], source
@@ -298,7 +347,7 @@ async def edit(page: dict, command: str) -> tuple[dict | None, str, str]:
     """Returns (new page or None, change or message, source)."""
     summary = {k: page.get(k) for k in ("name", "theme", "side", "big", "dimDone")} | {"memo_on": page.get("memo") is not None, "kind": page.get("main", {}).get("kind")}
     plan = await _parse(_EDIT_SYSTEM, f"현재 페이지: {summary}\n요청: {command}", EditPlan)
-    source = "claude"
+    source = provider()
     if not isinstance(plan, EditPlan):
         plan, source = rules_edit(command), "rules"
     new, change = apply_edit(page, plan)

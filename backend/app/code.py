@@ -75,7 +75,7 @@ def load_skills() -> tuple[Skill, ...]:
     return tuple(out)
 
 
-def pick_skills(text: str, limit: int = 2) -> list[Skill]:
+def pick_skills(text: str, limit: int = 3) -> list[Skill]:
     t = text.lower()
     skills = load_skills()
     scored = sorted(((sum(t.count(k.lower()) for k in s.keywords), s) for s in skills if not s.always), key=lambda x: -x[0])
@@ -468,10 +468,10 @@ def _photo_note(images: list[str] | None, place: bool = False) -> str:
     if place:
         names = ", ".join(f"{{{{photo{i + 1}}}}}" for i in range(n))
         return (f"\n\n(사용자가 사진 {n}장을 함께 보냈고, 요청에 그 사진을 쓰는 방법이 있어요. 그대로 따른다. "
-                f"사진 자체를 넣는 곳의 src에는 {names}를 그대로 쓴다. 사진을 넣지 않는 부분은 그 사진을 디자인 레퍼런스로 참고한다.)")
-    return (f"\n\n(사용자가 사진 {n}장을 함께 보냈어요. 디자인 레퍼런스예요. 사진 자체는 페이지에 넣지 않는다. "
-            "`<!-- 레퍼런스: -->` 주석에 색·글자 느낌·카드와 장식 모양을 먼저 적고, 요청한 기능의 뼈대를 온전히 만든 뒤 그 느낌을 입힌다. "
-            "홍보 이미지면 기기 목업·배지·광고 문구가 아니라 그 안의 화면 디자인을 본다.)")
+                f"사진 자체를 넣는 곳의 src에는 {names}를 그대로 쓴다. 나머지 구조는 seyo 기준 그대로, 사진은 무드만 참고한다.)")
+    return (f"\n\n(사용자가 사진 {n}장을 함께 보냈어요. 무드 참고용이에요. 사진 자체는 페이지에 넣지 않는다. "
+            "`<!-- 무드: -->` 주석에 가장 가까운 테마·색 2~3개·장식 느낌을 먼저 적고, 레이아웃·구조·간격은 seyo 기준(스킬과 키트) 그대로 두고 "
+            "테마와 강조색, 장식만 그 무드로 맞춘다. 사진의 배치를 따라 하지 않는다.)")
 
 
 def _ev(**kw) -> str:

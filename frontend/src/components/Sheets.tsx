@@ -1,6 +1,8 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { Animated, Modal, Platform, Pressable, Share, View } from 'react-native';
 import { confirmAction, notice } from '@/lib/confirm';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { api } from '@/lib/api';
 import { startAppleWeb } from '@/lib/apple';
 import { startKakaoWeb } from '@/lib/kakao';
 import { Person } from '@/lib/page';
@@ -71,9 +73,25 @@ const showTerms = (title: string) => notice(title, `[${title} 본문]`);
 
 export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; onDismiss: () => void; onLogin: (p: 'apple' | 'kakao') => void }) {
   const { draft, pendingInvite } = useStore();
-  // web: real Kakao login (out to Kakao and back to /auth/kakao); iPad: the native SDK, not wired yet
-  const kakao = () => (Platform.OS === 'web' ? startKakaoWeb(draft, pendingInvite) : onLogin('kakao'));
-  const apple = () => (Platform.OS === 'web' ? startAppleWeb(draft, pendingInvite) : onLogin('apple'));
+  const web = Platform.OS === 'web';
+  const [failed, setFailed] = useState<string | null>(null);
+  // web: out to Kakao / Apple and back to /auth/kakao, /auth/apple (the draft comes along)
+  const kakao = () => startKakaoWeb(draft, pendingInvite);
+  const apple = () => startAppleWeb(draft, pendingInvite);
+  // iPad: the system Apple sheet, then the server checks the identity token
+  const appleNative = async () => {
+    setFailed(null);
+    try {
+      const cred = await AppleAuthentication.signInAsync({ requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME] });
+      if (!cred.identityToken) throw new Error('no token');
+      // Apple sends the name only the first time
+      const name = [cred.fullName?.familyName, cred.fullName?.givenName].filter(Boolean).join('') || undefined;
+      await api.loginApple(cred.identityToken, name);
+      onLogin('apple');
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'ERR_REQUEST_CANCELED') setFailed('Apple 로그인을 하지 못했어요. 다시 해 주세요');
+    }
+  };
   return (
     <Sheet visible={visible} onDismiss={onDismiss} width={460} label="로그인">
       <View style={{ paddingTop: 44, paddingHorizontal: 40, paddingBottom: 32, gap: 32 }}>
@@ -86,18 +104,36 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
           </T>
         </View>
         <View style={{ gap: 10 }}>
-          <Btn onPress={apple} style={{ height: 54, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <BrandIcon brand="apple" />
-            <T w={500} s={16} c={C.white}>
-              Apple로 계속하기
+          {web ? (
+            <Btn onPress={apple} style={{ height: 54, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <BrandIcon brand="apple" />
+              <T w={500} s={16} c={C.white}>
+                Apple로 계속하기
+              </T>
+            </Btn>
+          ) : (
+            // App Store review asks for Apple's own button on iOS
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={14}
+              style={{ height: 54, width: '100%' }}
+              onPress={appleNative}
+            />
+          )}
+          {failed && (
+            <T s={13} c={C.error} center>
+              {failed}
             </T>
-          </Btn>
+          )}
+          {web && (
           <Btn onPress={kakao} style={{ height: 54, borderRadius: 14, backgroundColor: C.kakao, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <BrandIcon brand="kakao" />
             <T w={500} s={16} c="#191919">
               카카오로 계속하기
             </T>
           </Btn>
+          )}
         </View>
         <T w={300} s={12} c={C.muted} center>
           계속하면{' '}
@@ -334,8 +370,24 @@ export function AccountSheet({ visible, onClose, plus, onPlus, onLogout }: { vis
             <T s={15}>seyo plus 알아보기</T>
           </Btn>
         )}
-        <Btn onPress={() => confirmAction('로그아웃할까요?', '이 기기에 있는 페이지는 지워져요.', '로그아웃', onLogout)} style={{ height: 52, borderRadius: 16, backgroundColor: C.fill, paddingHorizontal: 18, justifyContent: 'center' }}>
+        <Btn onPress={() => confirmAction('로그아웃할까요?', '다시 로그인하면 페이지가 그대로 있어요.', '로그아웃', onLogout)} style={{ height: 52, borderRadius: 16, backgroundColor: C.fill, paddingHorizontal: 18, justifyContent: 'center' }}>
           <T s={15}>로그아웃</T>
+        </Btn>
+        {/* App Store requires deleting the account from inside the app */}
+        <Btn
+          onPress={() =>
+            confirmAction('계정을 삭제할까요?', '내 페이지가 모두 지워지고 되돌릴 수 없어요. 함께 쓰던 페이지에서도 나가져요.', '계정 삭제', () => {
+              api
+                .deleteAccount()
+                .then(onLogout)
+                .catch(() => notice('삭제하지 못했어요', '잠시 뒤 다시 해 주세요.'));
+            })
+          }
+          style={{ height: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: 8 }}
+        >
+          <T s={13.5} c={C.muted} style={{ textDecorationLine: 'underline' }}>
+            계정 삭제
+          </T>
         </Btn>
       </View>
     </Sheet>

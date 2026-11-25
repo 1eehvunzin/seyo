@@ -7,23 +7,26 @@ import { C } from '@/theme';
 
 /** 01 · 스플래시 */
 export default function Splash() {
-  const { loggedIn } = useStore();
+  const { loggedIn, ready } = useStore();
   const { width, height } = useLayout();
   const fade = useState(() => new Animated.Value(0))[0];
   const done = useRef(false);
-
-  const go = () => {
-    if (done.current) return;
-    done.current = true;
-    router.replace(loggedIn ? '/home' : '/start');
-  };
+  /** the splash has shown long enough (or was tapped) */
+  const [shown, setShown] = useState(false);
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 600, useNativeDriver: true }).start();
-    const t = setTimeout(go, 1800);
+    const t = setTimeout(() => setShown(true), 1800);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fade]);
+
+  // leave once both the splash has shown and the saved login has been checked
+  useEffect(() => {
+    if (!shown || !ready || done.current) return;
+    done.current = true;
+    router.replace(loggedIn ? '/home' : '/start');
+  }, [shown, ready, loggedIn]);
+  const go = () => setShown(true);
 
   const star = Math.min(460, Math.min(width, height) * 0.55);
 

@@ -5,7 +5,7 @@ import { PageCanvas } from '@/components/PageCanvas';
 import { PaywallSheet } from '@/components/Sheets';
 import { Btn, Icon, IconButton, noOutline, Screen, T, useLayout } from '@/components/ui';
 import { WidgetView } from '@/components/WidgetView';
-import { confirmAction } from '@/lib/confirm';
+import { confirmAction, notice } from '@/lib/confirm';
 import { ApiError } from '@/lib/api';
 import { followUpWithAi, planFromPrompt, PROMPT_EXAMPLES, TEMPLATES } from '@/lib/generate';
 import { appPage, Live, liveLabel, repairApp, runApp } from '@/lib/vibecode';
@@ -26,7 +26,7 @@ type Step = { key: string; text: string };
 
 /** 10 · 말로 새 페이지 만들기 */
 export default function Generate() {
-  const { savePage, pages, plus, setPlus } = useStore();
+  const { savePage, pages, plus } = useStore();
   const { width, height } = useLayout();
   // Split View / narrow windows stack the chat above the preview instead of squeezing two columns
   const stacked = width < 700;
@@ -410,13 +410,8 @@ export default function Generate() {
         visible={payOpen}
         onClose={() => setPayOpen(false)}
         onSubscribe={() => {
-          setPlus(true);
           setPayOpen(false);
-          if (page && widget) {
-            const final = { ...page, widget };
-            savePage(final);
-            router.replace({ pathname: '/page/[id]', params: { id: final.id } });
-          }
+          notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 지금은 무료로 계속 쓸 수 있어요.');
         }}
       />
     </Screen>

@@ -27,7 +27,7 @@ export default function KakaoReturn() {
       .loginKakaoCode(code, kakaoRedirectUri())
       .then(() => {
         if (pending?.invite) setPendingInvite(pending.invite);
-        login('kakao', { real: true, draft: pending?.draft ?? null });
+        login('kakao', { draft: pending?.draft ?? null });
         router.replace('/home');
       })
       .catch((e) => setFailed(e instanceof ApiError ? e.message : '카카오 로그인을 하지 못했어요. 잠시 뒤 다시 해 주세요'));

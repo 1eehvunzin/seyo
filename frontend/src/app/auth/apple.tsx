@@ -25,7 +25,7 @@ export default function AppleReturn() {
       .loginApple(idToken, undefined, pending.nonce)
       .then(() => {
         if (pending.invite) setPendingInvite(pending.invite);
-        login('apple', { real: true, draft: pending.draft });
+        login('apple', { draft: pending.draft });
         router.replace('/home');
       })
       .catch((e) => setProblem(e instanceof ApiError ? e.message : 'Apple 로그인을 하지 못했어요. 잠시 뒤 다시 해 주세요'));

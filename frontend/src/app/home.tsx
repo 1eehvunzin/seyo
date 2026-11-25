@@ -1,13 +1,13 @@
 import { Redirect, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Face, FaceStack } from '@/components/Faces';
 import { AccountSheet, PaywallSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
 import { WidgetView } from '@/components/WidgetView';
-import { confirmAction } from '@/lib/confirm';
+import { confirmAction, notice } from '@/lib/confirm';
 import { longKo } from '@/lib/date';
-import { ME, Page } from '@/lib/page';
+import { Page, Person } from '@/lib/page';
 import { useStore } from '@/store';
 import { C } from '@/theme';
 
@@ -47,9 +47,10 @@ function pack(pages: Page[], cols: number, rows: number, cell: number): { slots:
   return { slots, screens: screen + 1 };
 }
 
-/** 08 · 홈 — 로그인 직후 첫 진입 시 구독 모달. 페이지가 넘치면 옆으로 넘긴다. */
+/** 08 · 홈. 페이지가 넘치면 옆으로 넘긴다. (구독은 결제가 붙기 전까지 '곧 열려요') */
 export default function Home() {
-  const { pages, loggedIn, plus, setPlus, paywallPending, consumePaywall, logout } = useStore();
+  const { pages, loggedIn, ready, plus, logout, me } = useStore();
+  const ME: Person = me ? { id: me.id, name: me.name, initial: me.initial, bg: me.bg } : { id: 'me', name: '나', initial: '나', bg: '#F8D7E2' };
   const { appGutter } = useLayout();
   const pad = appGutter + 16;
   const [area, setArea] = useState({ w: 0, h: 0 });
@@ -57,19 +58,10 @@ export default function Home() {
   const [payOpen, setPayOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
-  useEffect(() => {
-    if (paywallPending && !plus) {
-      const t = setTimeout(() => setPayOpen(true), 450);
-      return () => clearTimeout(t);
-    }
-  }, [paywallPending, plus]);
-
+  if (!ready) return null;
   if (!loggedIn) return <Redirect href="/" />;
 
-  const closePay = () => {
-    setPayOpen(false);
-    consumePaywall();
-  };
+  const closePay = () => setPayOpen(false);
 
   const gridW = Math.max(0, area.w - pad * 2);
   const cols = gridW >= 900 ? 4 : gridW >= 560 ? 3 : 2;
@@ -130,8 +122,8 @@ export default function Home() {
         visible={payOpen}
         onClose={closePay}
         onSubscribe={() => {
-          setPlus(true);
           closePay();
+          notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 지금은 무료로 계속 쓸 수 있어요.');
         }}
       />
       <AccountSheet
@@ -166,7 +158,8 @@ function NewTile() {
 }
 
 function PageTile({ page }: { page: Page }) {
-  const { removePage } = useStore();
+  const { removePage, me } = useStore();
+  const ME: Person = me ? { id: me.id, name: me.name, initial: me.initial, bg: me.bg } : { id: 'me', name: '나', initial: '나', bg: '#F8D7E2' };
   const remove = () =>
     page.owner
       ? confirmAction('이 페이지에서 나갈까요?', `${page.owner.name}님이 다시 초대하면 들어올 수 있어요.`, '나가기', () => removePage(page.id))

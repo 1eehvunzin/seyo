@@ -1,5 +1,5 @@
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { LoginSheet } from '@/components/Sheets';
 import { BrandBg, PrimaryButton, Screen, Star, T } from '@/components/ui';
@@ -7,24 +7,32 @@ import { useStore } from '@/store';
 import { C } from '@/theme';
 
 /**
- * Invite link: seyo://join/<token>
- * Not logged in → log in first, then come back here. Logged in → open the page the token points to.
+ * Invite link: https://app.sayitseyo.kr/join/<token>
+ * Not logged in → log in first (the invite is joined right after). Logged in → join on the server and open the page.
  * The current token of each page is the only one that works ("링크 새로 만들기" retires the old one).
  */
 export default function Join() {
   const { token } = useLocalSearchParams<{ token: string }>();
-  const { loggedIn, login, pages, setPendingInvite } = useStore();
-  const [loginOpen, setLoginOpen] = useState(!loggedIn);
+  const { loggedIn, ready, login, joinInvite, setPendingInvite } = useStore();
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const tried = useRef(false);
 
   useEffect(() => {
-    if (!loggedIn) setPendingInvite(token ?? null);
-    else setPendingInvite(null);
-  }, [loggedIn, token, setPendingInvite]);
+    if (!ready || !token) return;
+    if (!loggedIn) {
+      setPendingInvite(token);
+      return;
+    }
+    if (tried.current) return;
+    tried.current = true;
+    // logged in: join on the server and open the page
+    joinInvite(token)
+      .then((id) => router.replace({ pathname: '/page/[id]', params: { id } }))
+      .catch(() => setFailed(true));
+  }, [ready, loggedIn, token, joinInvite, setPendingInvite]);
 
-  if (loggedIn) {
-    const page = pages.find((p) => p.inviteToken === token);
-    if (page) return <Redirect href={{ pathname: '/page/[id]', params: { id: page.id } }} />;
-  }
+  if (!ready || (loggedIn && !failed)) return null;
 
   return (
     <Screen bg={C.white}>

@@ -1,14 +1,16 @@
 /**
- * Client for seyo/backend. Screens still run on the local store; switch a screen over by calling
- * these instead of the store actions (see INTEGRATIONS.md, "앱 연결").
+ * Client for seyo/backend. The store (src/store.tsx) syncs pages through it once logged in.
  * Set EXPO_PUBLIC_API_URL (e.g. http://192.168.0.10:8000 for a device on the same Wi-Fi).
  */
 import { fetch as streamFetch } from 'expo/fetch';
 import type { Change, Page, Person } from './page';
+import { saveToken } from './session';
 
 // an empty value (an unset CI variable) counts as not set
 const BASE = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 let token: string | null = null;
+/** where the app runs on the web (invite links point here) */
+const WEB = process.env.EXPO_PUBLIC_WEB_URL || 'https://app.sayitseyo.kr';
 
 export type Me = Person & { plus: boolean; plusUntil: string | null; paywallSeen: boolean };
 export type ServerPage = Page & { version: number };
@@ -100,7 +102,12 @@ type Session = { accessToken: string; user: Me };
 /** escalate: the fixed blocks can't do it → rebuild the page as a code app (appStream with `page`) */
 export type EditResult = { page: Page | null; change: Change | null; changed: string[]; message: string; source: string; left: number; escalate?: boolean };
 export type Usage = { limit: number; left: number; period: 'month' | 'trial' };
-const keep = (s: Session) => ((token = s.accessToken), s.user);
+// a login keeps its token for API calls and across reloads (lib/session.ts)
+const keep = (s: Session) => {
+  token = s.accessToken;
+  saveToken(token);
+  return s.user;
+};
 
 export const api = {
   setToken: (t: string | null) => (token = t),
@@ -108,8 +115,6 @@ export const api = {
   loginKakao: (accessToken: string) => call<Session>('POST', '/auth/kakao', { access_token: accessToken }).then(keep),
   /** web: the code Kakao sent back to /auth/kakao */
   loginKakaoCode: (code: string, redirectUri: string) => call<Session>('POST', '/auth/kakao/code', { code, redirect_uri: redirectUri }).then(keep),
-  /** Stand-in until Apple/Kakao keys: one dev account per install (server DEV_LOGIN=true). */
-  loginDev: (name = '나', sub = deviceId()) => call<Session>('POST', '/auth/dev', { name, sub }).then(keep),
   me: () => call<Me>('GET', '/me'),
   paywallSeen: () => call<Me>('POST', '/me/paywall-seen'),
   deleteAccount: () => call<void>('DELETE', '/me'),
@@ -139,5 +144,6 @@ export const api = {
 
   verifyPurchase: (signedTransaction: string) => call<Me>('POST', '/billing/apple', { signed_transaction: signedTransaction }),
   registerPush: (expoPushToken: string) => call<void>('POST', '/devices', { expo_push_token: expoPushToken }),
-  inviteUrl: (t: string) => `${BASE}/join/${t}`,
+  /** the invite link opens the web app's /join/<token> (works without the app installed) */
+  inviteUrl: (t: string) => `${WEB}/join/${t}`,
 };

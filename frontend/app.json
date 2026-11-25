@@ -60,7 +60,23 @@
         }
       ],
       "expo-splash-screen",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://devrepo.kakao.com/nexus/content/groups/public/"
+            ]
+          }
+        }
+      ],
+      [
+        "@react-native-seoul/kakao-login",
+        {
+          "kakaoAppKey": "31274cd562aa47a74a23e86a917895c0"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

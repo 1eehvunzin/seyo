@@ -12,7 +12,7 @@ let token: string | null = null;
 /** where the app runs on the web (invite links point here) */
 const WEB = process.env.EXPO_PUBLIC_WEB_URL || 'https://app.sayitseyo.kr';
 
-export type Me = Person & { plus: boolean; plusUntil: string | null; paywallSeen: boolean };
+export type Me = Person & { named: boolean; plus: boolean; plusUntil: string | null; paywallSeen: boolean };
 export type ServerPage = Page & { version: number };
 
 export class ApiError extends Error {
@@ -116,6 +116,8 @@ export const api = {
   /** web: the code Kakao sent back to /auth/kakao */
   loginKakaoCode: (code: string, redirectUri: string) => call<Session>('POST', '/auth/kakao/code', { code, redirect_uri: redirectUri }).then(keep),
   me: () => call<Me>('GET', '/me'),
+  /** nickname shown to people on shared pages */
+  setName: (name: string) => call<Me>('PATCH', '/me', { name }),
   paywallSeen: () => call<Me>('POST', '/me/paywall-seen'),
   deleteAccount: () => call<void>('DELETE', '/me'),
 

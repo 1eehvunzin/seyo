@@ -2,7 +2,7 @@ import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Face, FaceStack } from '@/components/Faces';
-import { AccountSheet, PaywallSheet } from '@/components/Sheets';
+import { AccountSheet, NameSheet, PaywallSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
 import { WidgetView } from '@/components/WidgetView';
 import { confirmAction, notice } from '@/lib/confirm';
@@ -49,7 +49,10 @@ function pack(pages: Page[], cols: number, rows: number, cell: number): { slots:
 
 /** 08 · 홈. 페이지가 넘치면 옆으로 넘긴다. (구독은 결제가 붙기 전까지 '곧 열려요') */
 export default function Home() {
-  const { pages, loggedIn, ready, plus, logout, me } = useStore();
+  const { pages, loggedIn, ready, plus, logout, me, setName } = useStore();
+  /** no name from the login: ask once (this visit); or opened from the account menu */
+  const [nameAsked, setNameAsked] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const ME: Person = me ? { id: me.id, name: me.name, initial: me.initial, bg: me.bg } : { id: 'me', name: '나', initial: '나', bg: '#F8D7E2' };
   const { appGutter } = useLayout();
   const pad = appGutter + 16;
@@ -126,9 +129,24 @@ export default function Home() {
           notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 지금은 무료로 계속 쓸 수 있어요.');
         }}
       />
+      <NameSheet
+        key={me?.name}
+        visible={renameOpen || (!!me && !me.named && !nameAsked)}
+        current={me?.named ? me.name : ''}
+        onClose={() => {
+          setNameAsked(true);
+          setRenameOpen(false);
+        }}
+        onSave={setName}
+      />
       <AccountSheet
         visible={accountOpen}
         plus={plus}
+        name={me?.named ? me.name : undefined}
+        onRename={() => {
+          setAccountOpen(false);
+          setTimeout(() => setRenameOpen(true), 350);
+        }}
         onClose={() => setAccountOpen(false)}
         onPlus={() => {
           setAccountOpen(false);

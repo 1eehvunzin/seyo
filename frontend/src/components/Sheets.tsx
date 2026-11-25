@@ -1,16 +1,17 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { Animated, Modal, Platform, Pressable, Share, View } from 'react-native';
+import { Animated, Linking, Modal, Platform, Pressable, Share, TextInput, View } from 'react-native';
 import { confirmAction, notice } from '@/lib/confirm';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { api } from '@/lib/api';
 import { startAppleWeb } from '@/lib/apple';
 import { startKakaoWeb } from '@/lib/kakao';
+import { isKakaoCancel, kakaoNativeToken } from '@/lib/kakaoNative';
 import { Person } from '@/lib/page';
 import { useStore } from '@/store';
-import { C } from '@/theme';
+import { C, F } from '@/theme';
 import Svg, { Path } from 'react-native-svg';
 import { Face } from './Faces';
-import { Btn, Icon, IconButton, Star, T, Wordmark } from './ui';
+import { Btn, Icon, IconButton, noOutline, Star, T, Wordmark } from './ui';
 
 const ORIENTATIONS = ['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right'] as const;
 
@@ -67,7 +68,12 @@ function BrandIcon({ brand }: { brand: 'apple' | 'kakao' }) {
   );
 }
 
-const showTerms = (title: string) => notice(title, `[${title} 본문]`);
+/** Terms / privacy open as pages (a new tab on the web, Safari on iPad) so the sheet keeps its state. */
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL || 'https://app.sayitseyo.kr';
+const showTerms = (path: '/terms' | '/privacy') => {
+  if (Platform.OS === 'web') window.open(path, '_blank', 'noopener');
+  else Linking.openURL(`${WEB_URL}${path}`).catch(() => {});
+};
 
 /* ───────── 07 · 로그인 모달 ───────── */
 
@@ -75,11 +81,30 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
   const { draft, pendingInvite } = useStore();
   const web = Platform.OS === 'web';
   const [failed, setFailed] = useState<string | null>(null);
+  /** 만 14세 이상 + 약관 동의 (required before any login) */
+  const [agreed, setAgreed] = useState(false);
+  const needAgree = () => {
+    if (agreed) return false;
+    setFailed('만 14세 이상인지, 약관에 동의하는지 먼저 체크해 주세요');
+    return true;
+  };
   // web: out to Kakao / Apple and back to /auth/kakao, /auth/apple (the draft comes along)
-  const kakao = () => startKakaoWeb(draft, pendingInvite);
-  const apple = () => startAppleWeb(draft, pendingInvite);
+  // iPad: the native Kakao SDK (KakaoTalk or Kakao account), then the server checks the token
+  const kakao = async () => {
+    if (needAgree()) return;
+    if (web) return startKakaoWeb(draft, pendingInvite);
+    setFailed(null);
+    try {
+      await api.loginKakao(await kakaoNativeToken());
+      onLogin('kakao');
+    } catch (e) {
+      if (!isKakaoCancel(e)) setFailed('카카오 로그인을 하지 못했어요. 다시 해 주세요');
+    }
+  };
+  const apple = () => !needAgree() && startAppleWeb(draft, pendingInvite);
   // iPad: the system Apple sheet, then the server checks the identity token
   const appleNative = async () => {
+    if (needAgree()) return;
     setFailed(null);
     try {
       const cred = await AppleAuthentication.signInAsync({ requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME] });
@@ -126,26 +151,35 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
               {failed}
             </T>
           )}
-          {web && (
           <Btn onPress={kakao} style={{ height: 54, borderRadius: 14, backgroundColor: C.kakao, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <BrandIcon brand="kakao" />
             <T w={500} s={16} c="#191919">
               카카오로 계속하기
             </T>
           </Btn>
-          )}
         </View>
-        <T w={300} s={12} c={C.muted} center>
-          계속하면{' '}
-          <T w={300} s={12} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('이용약관')} accessibilityRole="link">
-            이용약관
+        <Btn
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agreed }}
+          onPress={() => setAgreed((v) => !v)}
+          style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 4 }}
+          readOnly
+        >
+          <View style={{ width: 20, height: 20, marginTop: 1, borderRadius: 6, borderWidth: 1.5, borderColor: agreed ? C.ink : C.dot, backgroundColor: agreed ? C.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+            {agreed && <Icon name="check" size={13} color={C.white} stroke={2.4} />}
+          </View>
+          <T s={13} c={C.ink2} lh={1.5} style={{ flex: 1 }}>
+            만 14세 이상이고,{' '}
+            <T s={13} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/terms')} accessibilityRole="link">
+              이용약관
+            </T>
+            과{' '}
+            <T s={13} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/privacy')} accessibilityRole="link">
+              개인정보 처리방침
+            </T>
+            에 동의해요
           </T>
-          과{' '}
-          <T w={300} s={12} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('개인정보 처리방침')} accessibilityRole="link">
-            개인정보 처리방침
-          </T>
-          에 동의하게 돼요.
-        </T>
+        </Btn>
       </View>
     </Sheet>
   );
@@ -241,7 +275,7 @@ export function PaywallSheet({ visible, onClose, onSubscribe, accent = C.accent 
           <T s={12} c={C.muted} accessibilityRole="link" onPress={() => setRestoreMsg('복원할 구매 내역이 없어요')}>
             구매 복원
           </T>
-          <T s={12} c={C.muted} accessibilityRole="link" onPress={() => showTerms('이용약관')}>
+          <T s={12} c={C.muted} accessibilityRole="link" onPress={() => showTerms('/terms')}>
             이용약관
           </T>
           <T s={12} c={C.muted}>
@@ -355,13 +389,21 @@ function PersonRow({ p, label, right }: { p: Person; label: string; right: React
 
 /* ───────── account menu (avatar on Home) ───────── */
 
-export function AccountSheet({ visible, onClose, plus, onPlus, onLogout }: { visible: boolean; onClose: () => void; plus: boolean; onPlus: () => void; onLogout: () => void }) {
+export function AccountSheet({ visible, onClose, plus, onPlus, onLogout, name, onRename }: { visible: boolean; onClose: () => void; plus: boolean; onPlus: () => void; onLogout: () => void; name?: string; onRename?: () => void }) {
   return (
     <Sheet visible={visible} onDismiss={onClose} width={380} label="내 계정">
       <View style={{ padding: 28, gap: 8 }}>
         <T w={600} s={20} style={{ marginBottom: 8 }}>
           내 계정
         </T>
+        {onRename && (
+          <Btn onPress={onRename} style={{ height: 52, borderRadius: 16, backgroundColor: C.fill, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <T s={15}>{name || '이름 정하기'}</T>
+            <T s={13} c={C.muted}>
+              이름 바꾸기
+            </T>
+          </Btn>
+        )}
         <T s={14} c={C.muted} style={{ marginBottom: 12 }}>
           {plus ? 'seyo plus 이용 중' : '무료로 쓰는 중'}
         </T>
@@ -389,6 +431,78 @@ export function AccountSheet({ visible, onClose, plus, onPlus, onLogout }: { vis
             계정 삭제
           </T>
         </Btn>
+      </View>
+    </Sheet>
+  );
+}
+
+/* ───────── 닉네임 ───────── */
+
+/**
+ * "어떻게 불러 드릴까요?" — asked once after login when the login gave no name (Apple on the web,
+ * Kakao without the nickname consent), and from the account menu any time.
+ */
+export function NameSheet({ visible, current, onClose, onSave }: { visible: boolean; current?: string; onClose: () => void; onSave: (name: string) => Promise<void> }) {
+  const [name, setName] = useState(current ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ok = name.trim().length > 0 && name.trim().length <= 20;
+  const save = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(name.trim());
+      onClose();
+    } catch {
+      setError('저장하지 못했어요. 다시 해 주세요');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet visible={visible} onDismiss={onClose} width={420} label="이름">
+      <View style={{ padding: 32, gap: 20 }}>
+        <View style={{ gap: 8 }}>
+          <T w={600} s={22} ls={-0.03}>
+            어떻게 불러 드릴까요?
+          </T>
+          <T s={14} c={C.sub} lh={1.5}>
+            함께 쓰는 페이지에서 친구들에게 이 이름이 보여요.
+          </T>
+        </View>
+        <TextInput
+          value={name}
+          onChangeText={(v) => {
+            setName(v.slice(0, 20));
+            setError(null);
+          }}
+          placeholder="이름이나 닉네임"
+          placeholderTextColor={C.faint}
+          autoFocus
+          maxLength={20}
+          returnKeyType="done"
+          onSubmitEditing={save}
+          accessibilityLabel="이름"
+          style={{ height: 52, borderRadius: 14, borderWidth: 1, borderColor: C.line, paddingHorizontal: 16, fontFamily: F[400], fontSize: 16, color: C.ink, ...noOutline }}
+        />
+        {!!error && (
+          <T s={13} c={C.error}>
+            {error}
+          </T>
+        )}
+        <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
+          <Btn onPress={onClose} style={{ height: 46, paddingHorizontal: 18, borderRadius: 23, justifyContent: 'center' }}>
+            <T s={14.5} c={C.sub}>
+              나중에
+            </T>
+          </Btn>
+          <Btn onPress={save} disabled={!ok || busy} style={{ height: 46, paddingHorizontal: 22, borderRadius: 23, backgroundColor: C.ink, justifyContent: 'center' }}>
+            <T s={14.5} c={C.white}>
+              {busy ? '저장 중' : '저장'}
+            </T>
+          </Btn>
+        </View>
       </View>
     </Sheet>
   );

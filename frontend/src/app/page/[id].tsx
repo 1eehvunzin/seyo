@@ -55,6 +55,12 @@ export default function PageScreen() {
       router.replace('/home');
     });
 
+  const remove = () =>
+    confirmAction('이 페이지를 지울까요?', page.members.length ? '함께 쓰던 사람들도 더는 볼 수 없어요. 되돌릴 수 없어요.' : '지우면 되돌릴 수 없어요.', '지우기', () => {
+      removePage(page.id);
+      router.replace('/home');
+    });
+
   return (
     <Screen>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -88,6 +94,11 @@ export default function PageScreen() {
                     <Icon name="pencil" size={14} color={editing ? C.white : C.ink} stroke={1.8} />
                     <T s={13.5} c={editing ? C.white : C.ink}>
                       {editing ? '완료' : '수정'}
+                    </T>
+                  </Btn>
+                  <Btn onPress={remove} accessibilityLabel="이 페이지 지우기" style={{ height: 36, paddingHorizontal: 10, borderRadius: 18, justifyContent: 'center' }}>
+                    <T s={13} c={C.sub}>
+                      지우기
                     </T>
                   </Btn>
                 </>

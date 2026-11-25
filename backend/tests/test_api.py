@@ -434,3 +434,17 @@ def test_apple_token_audiences_and_nonce(monkeypatch):
             raise AssertionError("should fail")
         except auth.LoginError:
             pass
+
+
+def test_update_nickname(client):
+    from app import auth
+
+    s = auth.get_settings()
+    token = client.post("/auth/dev", json={"sub": "nick-1", "name": ""}).json()["accessToken"] if s.dev_login else None
+    if not token:
+        return
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get("/me", headers=h).json()["named"] is False
+    me = client.patch("/me", json={"name": "  민지  "}, headers=h).json()
+    assert me["name"] == "민지" and me["named"] is True
+    assert client.patch("/me", json={"name": "   "}, headers=h).status_code == 422

@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any, Literal
@@ -35,7 +36,8 @@ def _kst_day() -> str:
 
 
 def _me_out(u: User) -> dict:
-    return {**person(u), "plus": u.is_plus(), "plusUntil": u.plus_until.isoformat() if u.plus_until else None, "paywallSeen": u.paywall_seen}
+    # named: false when the login gave no name (the app asks for a nickname once)
+    return {**person(u), "named": bool(u.name), "plus": u.is_plus(), "plusUntil": u.plus_until.isoformat() if u.plus_until else None, "paywallSeen": u.paywall_seen}
 
 
 # ───────── auth ─────────
@@ -109,6 +111,22 @@ def login_dev(body: DevLogin, db: Session = Depends(get_db)):
 
 @router.get("/me", tags=["me"])
 def me(user: User = Depends(current_user)):
+    return _me_out(user)
+
+
+class MePatch(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+
+
+@router.patch("/me", tags=["me"])
+def update_me(body: MePatch, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Nickname (shown to people on shared pages). Apple on the web and Kakao without the
+    nickname consent give none, so the app asks once after login."""
+    name = " ".join(body.name.split())
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "이름을 적어 주세요")
+    user.name = name
+    db.commit()
     return _me_out(user)
 
 
@@ -484,6 +502,10 @@ def _guest_take(db: Session, request: Request, device_id: str | None, free: bool
     (GUEST_FREE_CREATES per device, still inside the IP daily cap); past that it's a normal try."""
     s = get_settings()
     dev_key, ip_key, day = _guest_device(device_id), _client_ip(request), _kst_day()
+    # privacy policy: daily IP rows (abuse backstop) are kept for a year at most
+    if random.random() < 0.01:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d")
+        db.query(GuestUsage).filter(GuestUsage.kind == "ip", GuestUsage.day < cutoff).delete(synchronize_session=False)
     dev = _guest_row(db, "device", dev_key)
     ip = _guest_row(db, "ip", ip_key, day)
     taken: list[tuple[str, str, str]] = []

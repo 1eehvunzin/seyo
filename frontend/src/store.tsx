@@ -28,6 +28,8 @@ type Store = {
   ready: boolean;
   loggedIn: boolean;
   me: Me | null;
+  /** change the nickname (server first, then here) */
+  setName: (name: string) => Promise<void>;
   /**
    * After api.loginApple / api.loginKakaoCode succeeded: load the account and keep the draft as a
    * page. `draft` overrides the stored one (it came back from before a login redirect).
@@ -190,6 +192,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [loggedIn, pages],
   );
 
+  const setName = useCallback(async (name: string) => {
+    setMe(await api.setName(name));
+  }, []);
+
   const joinInvite = useCallback(async (t: string) => {
     const sp = await api.join(t);
     onServer.current.add(sp.id);
@@ -264,6 +270,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ready,
       loggedIn,
       me,
+      setName,
       login,
       logout,
       plus: !!me?.plus,
@@ -272,7 +279,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       joinInvite,
       refreshPage,
     }),
-    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, me, login, logout, pendingInvite, joinInvite, refreshPage],
+    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, me, setName, login, logout, pendingInvite, joinInvite, refreshPage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

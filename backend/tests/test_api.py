@@ -382,3 +382,55 @@ def test_guest_first_page_is_free(client, monkeypatch):
         assert last(client.post("/ai/app", json={"prompt": "위클리 만들어줘"}, headers=g))["left"] == 5
     assert last(client.post("/ai/app", json={"prompt": "또 만들어줘"}, headers=g))["left"] == 4  # past the free ones
     assert last(client.post("/ai/app", json={"prompt": "색 바꿔줘", "html": "<html></html>"}, headers=g))["left"] == 3
+
+
+def test_kakao_web_code_login(client, monkeypatch):
+    from app import routes
+
+    seen = {}
+
+    def fake_exchange(code, redirect_uri):
+        seen["args"] = (code, redirect_uri)
+        return "tok-123"
+
+    monkeypatch.setattr(routes, "kakao_code_to_token", fake_exchange)
+    monkeypatch.setattr(routes, "verify_kakao", lambda t: ("kakao-42", "민지") if t == "tok-123" else (_ for _ in ()).throw(Exception()))
+    base = routes.get_settings().public_base_url.rstrip("/")
+    r = client.post("/auth/kakao/code", json={"code": "abcd1234", "redirect_uri": f"{base}/auth/kakao"})
+    assert r.status_code == 200 and r.json()["user"]["name"] == "민지" and r.json()["accessToken"]
+    assert seen["args"] == ("abcd1234", f"{base}/auth/kakao")
+    # a redirect back to somewhere else is refused
+    assert client.post("/auth/kakao/code", json={"code": "abcd1234", "redirect_uri": "https://evil.example/auth/kakao"}).status_code == 400
+
+
+def test_apple_token_audiences_and_nonce(monkeypatch):
+    import time
+
+    import jwt as pyjwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from app import auth
+
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    class FakeJwks:
+        def get_signing_key_from_jwt(self, _t):
+            return type("K", (), {"key": priv.public_key()})()
+
+    monkeypatch.setattr(auth, "_apple_jwks", FakeJwks())
+
+    def token(aud, nonce=None):
+        claims = {"iss": auth.APPLE_ISSUER, "aud": aud, "sub": "apple-1", "iat": int(time.time()), "exp": int(time.time()) + 600}
+        if nonce:
+            claims["nonce"] = nonce
+        return pyjwt.encode(claims, priv, algorithm="RS256")
+
+    s = auth.get_settings()
+    assert auth.verify_apple(token(s.apple_bundle_id))[0] == "apple-1"  # iPad app
+    assert auth.verify_apple(token("web.seyo.kr", "n1"), "n1")[0] == "apple-1"  # web
+    for bad in (lambda: auth.verify_apple(token("other.app")), lambda: auth.verify_apple(token("web.seyo.kr", "n1"), "n2")):
+        try:
+            bad()
+            raise AssertionError("should fail")
+        except auth.LoginError:
+            pass

@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import ai, code, pinterest
-from .auth import LoginError, current_user, optional_user, issue_token, upsert_user, verify_apple, verify_kakao
+from .auth import LoginError, current_user, kakao_code_to_token, optional_user, issue_token, upsert_user, verify_apple, verify_kakao
 from .billing import BillingError, verify_apple_jws, verify_signed_transaction
 from .config import get_settings
 from .db import SessionLocal, get_db
@@ -44,6 +44,7 @@ def _me_out(u: User) -> dict:
 class AppleLogin(BaseModel):
     identity_token: str
     name: str | None = Field(None, description="Apple sends the name only on the first sign-in; the app forwards it")
+    nonce: str | None = Field(None, max_length=128, description="web: the nonce put in the authorize request")
 
 
 class KakaoLogin(BaseModel):
@@ -62,7 +63,7 @@ def _session(db: Session, user: User) -> dict:
 @router.post("/auth/apple", tags=["auth"])
 def login_apple(body: AppleLogin, db: Session = Depends(get_db)):
     try:
-        sub, _email = verify_apple(body.identity_token)
+        sub, _email = verify_apple(body.identity_token, body.nonce)
     except LoginError as e:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Apple 로그인을 확인하지 못했어요") from e
     return _session(db, upsert_user(db, "apple", sub, body.name))
@@ -73,6 +74,25 @@ def login_kakao(body: KakaoLogin, db: Session = Depends(get_db)):
     try:
         sub, nickname = verify_kakao(body.access_token)
     except LoginError as e:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "카카오 로그인을 확인하지 못했어요") from e
+    return _session(db, upsert_user(db, "kakao", sub, nickname))
+
+
+class KakaoCode(BaseModel):
+    code: str = Field(min_length=4, max_length=512)
+    redirect_uri: str = Field(max_length=300)
+
+
+@router.post("/auth/kakao/code", tags=["auth"])
+def login_kakao_code(body: KakaoCode, db: Session = Depends(get_db)):
+    """Web: Kakao redirected back with ?code=; exchange it, then the same as /auth/kakao."""
+    base = get_settings().public_base_url.rstrip("/")
+    if not body.redirect_uri.startswith(base + "/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "잘못된 로그인 주소예요")
+    try:
+        sub, nickname = verify_kakao(kakao_code_to_token(body.code, body.redirect_uri))
+    except LoginError as e:
+        log.warning("kakao web login: %s", e)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "카카오 로그인을 확인하지 못했어요") from e
     return _session(db, upsert_user(db, "kakao", sub, nickname))
 

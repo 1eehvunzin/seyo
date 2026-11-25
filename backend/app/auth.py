@@ -61,18 +61,41 @@ def current_user(
 # ───────── providers ─────────
 
 
-def verify_apple(identity_token: str) -> tuple[str, str | None]:
-    """Verify an Apple identity token against Apple's public keys. Returns (sub, email)."""
+def verify_apple(identity_token: str, nonce: str | None = None) -> tuple[str, str | None]:
+    """Verify an Apple identity token against Apple's public keys. Returns (sub, email).
+    Accepted audiences: the iPad app (bundle id) and the web (Services ID). `nonce`: the web flow
+    sends the one it put in the authorize request, so a token can't be replayed."""
     global _apple_jwks
     s = get_settings()
     if _apple_jwks is None:
         _apple_jwks = jwt.PyJWKClient(APPLE_JWKS_URL)
     try:
         key = _apple_jwks.get_signing_key_from_jwt(identity_token)
-        claims = jwt.decode(identity_token, key.key, algorithms=["RS256"], audience=s.apple_bundle_id, issuer=APPLE_ISSUER)
+        audiences = [s.apple_bundle_id, *(a.strip() for a in s.apple_service_ids.split(",") if a.strip())]
+        claims = jwt.decode(identity_token, key.key, algorithms=["RS256"], audience=audiences, issuer=APPLE_ISSUER)
     except jwt.PyJWTError as e:
         raise LoginError(f"apple token invalid: {e}") from e
+    if nonce is not None and claims.get("nonce") != nonce:
+        raise LoginError("apple token nonce mismatch")
     return claims["sub"], claims.get("email")
+
+
+KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
+
+
+def kakao_code_to_token(code: str, redirect_uri: str) -> str:
+    """Web login: the authorization code Kakao sent back to redirect_uri → an access token."""
+    s = get_settings()
+    if not s.kakao_rest_key:
+        raise LoginError("kakao web login not configured")
+    data = {"grant_type": "authorization_code", "client_id": s.kakao_rest_key, "redirect_uri": redirect_uri, "code": code}
+    if s.kakao_client_secret:
+        data["client_secret"] = s.kakao_client_secret
+    with httpx.Client(timeout=10) as client:
+        r = client.post(KAKAO_TOKEN_URL, data=data)
+    if r.status_code != 200 or "access_token" not in r.json():
+        raise LoginError(f"kakao code exchange failed: {r.text[:200]}")
+    return r.json()["access_token"]
 
 
 def verify_kakao(access_token: str) -> tuple[str, str]:

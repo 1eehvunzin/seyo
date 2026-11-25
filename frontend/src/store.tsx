@@ -16,8 +16,12 @@ type Store = {
   removePage: (id: string) => void;
   getPage: (id: string) => Page | undefined;
   loggedIn: boolean;
-  /** Logs in and keeps the draft as the first page. */
-  login: (provider: 'apple' | 'kakao') => void;
+  /**
+   * Logs in and keeps the draft as the first page. `real`: the server session is already in (Kakao web
+   * login); otherwise a dev account per install stands in. `draft` overrides the stored one (it came back
+   * from before a login redirect).
+   */
+  login: (provider: 'apple' | 'kakao', opts?: { real?: boolean; draft?: Page | null }) => void;
   logout: () => void;
   plus: boolean;
   setPlus: (v: boolean) => void;
@@ -66,17 +70,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const removePage = useCallback((id: string) => setPages((list) => list.filter((p) => p.id !== id)), []);
 
   const login = useCallback(
-    (_provider: 'apple' | 'kakao') => {
+    (_provider: 'apple' | 'kakao', opts?: { real?: boolean; draft?: Page | null }) => {
       setLoggedIn(true);
-      // Server session for AI (monthly quota instead of the onboarding trial). Until the Apple/Kakao
-      // keys are in, a dev account per install stands in; offline the app keeps working on rules.
-      api.loginDev().catch(() => {});
-      setPages((list) => {
-        if (list.length) return list;
-        const rest = samplePages();
-        // The design shows the first page already shared with two friends; seeded so 초대·내보내기 can be tried.
-        return draft ? [{ ...draft, members: [PEOPLE.jisu, PEOPLE.minjun] }, ...rest] : rest;
-      });
+      const first = opts?.draft !== undefined ? opts.draft : draft;
+      if (opts?.draft !== undefined) setDraft(opts.draft);
+      if (opts?.real) {
+        // a real account: just the page they made, no sample pages or sample friends
+        setPages((list) => (list.length ? list : first ? [first] : []));
+      } else {
+        // Server session for AI (monthly quota instead of the onboarding trial). Until Apple login is
+        // in, a dev account per install stands in; offline the app keeps working on rules.
+        api.loginDev().catch(() => {});
+        setPages((list) => {
+          if (list.length) return list;
+          const rest = samplePages();
+          // The design shows the first page already shared with two friends; seeded so 초대·내보내기 can be tried.
+          return first ? [{ ...first, members: [PEOPLE.jisu, PEOPLE.minjun] }, ...rest] : rest;
+        });
+      }
       setPaywallPending(true);
     },
     [draft],

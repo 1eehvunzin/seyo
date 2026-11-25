@@ -104,8 +104,10 @@ const keep = (s: Session) => ((token = s.accessToken), s.user);
 
 export const api = {
   setToken: (t: string | null) => (token = t),
-  loginApple: (identityToken: string, name?: string) => call<Session>('POST', '/auth/apple', { identity_token: identityToken, name }).then(keep),
+  loginApple: (identityToken: string, name?: string, nonce?: string) => call<Session>('POST', '/auth/apple', { identity_token: identityToken, name, nonce }).then(keep),
   loginKakao: (accessToken: string) => call<Session>('POST', '/auth/kakao', { access_token: accessToken }).then(keep),
+  /** web: the code Kakao sent back to /auth/kakao */
+  loginKakaoCode: (code: string, redirectUri: string) => call<Session>('POST', '/auth/kakao/code', { code, redirect_uri: redirectUri }).then(keep),
   /** Stand-in until Apple/Kakao keys: one dev account per install (server DEV_LOGIN=true). */
   loginDev: (name = '나', sub = deviceId()) => call<Session>('POST', '/auth/dev', { name, sub }).then(keep),
   me: () => call<Me>('GET', '/me'),

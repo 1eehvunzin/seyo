@@ -1,7 +1,10 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { Animated, Modal, Pressable, Share, View } from 'react-native';
+import { Animated, Modal, Platform, Pressable, Share, View } from 'react-native';
 import { confirmAction, notice } from '@/lib/confirm';
+import { startAppleWeb } from '@/lib/apple';
+import { startKakaoWeb } from '@/lib/kakao';
 import { Person } from '@/lib/page';
+import { useStore } from '@/store';
 import { C } from '@/theme';
 import Svg, { Path } from 'react-native-svg';
 import { Face } from './Faces';
@@ -67,6 +70,10 @@ const showTerms = (title: string) => notice(title, `[${title} 본문]`);
 /* ───────── 07 · 로그인 모달 ───────── */
 
 export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; onDismiss: () => void; onLogin: (p: 'apple' | 'kakao') => void }) {
+  const { draft, pendingInvite } = useStore();
+  // web: real Kakao login (out to Kakao and back to /auth/kakao); iPad: the native SDK, not wired yet
+  const kakao = () => (Platform.OS === 'web' ? startKakaoWeb(draft, pendingInvite) : onLogin('kakao'));
+  const apple = () => (Platform.OS === 'web' ? startAppleWeb(draft, pendingInvite) : onLogin('apple'));
   return (
     <Sheet visible={visible} onDismiss={onDismiss} width={460} label="로그인">
       <View style={{ paddingTop: 44, paddingHorizontal: 40, paddingBottom: 32, gap: 32 }}>
@@ -79,13 +86,13 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
           </T>
         </View>
         <View style={{ gap: 10 }}>
-          <Btn onPress={() => onLogin('apple')} style={{ height: 54, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Btn onPress={apple} style={{ height: 54, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <BrandIcon brand="apple" />
             <T w={500} s={16} c={C.white}>
               Apple로 계속하기
             </T>
           </Btn>
-          <Btn onPress={() => onLogin('kakao')} style={{ height: 54, borderRadius: 14, backgroundColor: C.kakao, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Btn onPress={kakao} style={{ height: 54, borderRadius: 14, backgroundColor: C.kakao, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <BrandIcon brand="kakao" />
             <T w={500} s={16} c="#191919">
               카카오로 계속하기

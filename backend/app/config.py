@@ -16,9 +16,14 @@ class Settings(BaseSettings):
     jwt_ttl_days: int = 30
 
     # Sign in with Apple: the id_token audience is the app's bundle id
-    apple_bundle_id: str = "com.seyo.app"
+    apple_bundle_id: str = "app.seyo.kr"
+    # Sign in with Apple on the web: the Services ID (comma-separated if more than one)
+    apple_service_ids: str = "web.seyo.kr"
     # Kakao: app id that issued the access token (checked against /v1/user/access_token_info)
     kakao_app_id: int | None = None
+    # web login (authorization code): the key used as client_id, and the client secret if enabled in Kakao
+    kakao_rest_key: str = ""
+    kakao_client_secret: str = ""
 
     # Dev shortcuts. Must be false in prod.
     dev_login: bool = True

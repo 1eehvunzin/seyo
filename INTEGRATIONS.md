@@ -109,11 +109,15 @@
 - 앱이 출시되면 `APP_STORE_URL`을 실제 주소로 바꿔요.
 - (선택) Universal Links: 링크가 Safari를 거치지 않고 바로 앱으로 열리게 하려면 도메인에 `apple-app-site-association`을 올리고 `app.json`의 `ios.associatedDomains`를 설정해요.
 
-## 9. 서버 배포
+## 9. 배포 (Railway)
 
-- Render, Fly.io, Railway, Cloud Run 어디든 됩니다. 실행 명령: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- 필수 값: `ENV=prod`, `DEV_LOGIN=false`, `DEV_BILLING=false`, `JWT_SECRET`, `DATABASE_URL`, `CORS_ORIGINS` (웹을 안 쓰면 비워도 돼요).
-- Python 3.10 이상.
+- 프로젝트 `seyo` (Railway), 서비스 두 개:
+  - `api`: backend 폴더. `cd backend && railway up --service api`. 시작할 때 마이그레이션(alembic upgrade head) 후 uvicorn (`backend/railpack.json`).
+  - `web`: frontend 폴더. `cd frontend && railway up --service web`. `expo export -p web`(단일 페이지 앱) 후 `serve -s dist` (`frontend/railpack.json`).
+- 주소: 웹 `https://app.sayitseyo.kr` (가비아 DNS: CNAME app, TXT _railway-verify.app), API `https://api-production-3eebbba7.up.railway.app`.
+- 공유 링크는 `PUBLIC_BASE_URL=https://app.sayitseyo.kr` → `/join/<토큰>`을 웹 앱이 열어요.
+- DB: Supabase(시드니) Session pooler `aws-1-ap-southeast-2.pooler.supabase.com:5432` (직접 주소는 IPv6 전용이라 Railway에서 안 붙어요).
+- 지금 `ENV=beta`, `DEV_LOGIN=true`(애플·카카오 연결 전 유일한 로그인), `DEV_BILLING=false`. 애플 로그인을 붙이면 `ENV=prod`, `DEV_LOGIN=false`.
 
 ## 10. 약관, 개인정보, 만 14세 미만 (결정 필요)
 

@@ -6,7 +6,8 @@
 import { fetch as streamFetch } from 'expo/fetch';
 import type { Change, Page, Person } from './page';
 
-const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
+// an empty value (an unset CI variable) counts as not set
+const BASE = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 let token: string | null = null;
 
 export type Me = Person & { plus: boolean; plusUntil: string | null; paywallSeen: boolean };

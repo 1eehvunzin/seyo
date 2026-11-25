@@ -27,8 +27,8 @@ jobs:
 
       - run: npx expo export -p web
         env:
-          # set once the backend is on Railway (repo Settings → Variables → SEYO_API_URL)
-          EXPO_PUBLIC_API_URL: ${{ vars.SEYO_API_URL }}
+          # the API on Railway; override with repo Settings → Variables → SEYO_API_URL (e.g. a custom domain)
+          EXPO_PUBLIC_API_URL: ${{ vars.SEYO_API_URL || 'https://api-production-3eebbba7.up.railway.app' }}
 
       - run: npx --yes eas-cli@latest deploy --prod --non-interactive
         env:

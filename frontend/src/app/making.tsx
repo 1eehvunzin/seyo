@@ -38,7 +38,7 @@ export default function Making() {
     <Screen>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 44 }}>
         <Animated.View style={{ transform: [{ rotate }] }}>
-          <Star size={72} fill={C.star} />
+          <Star size={72} fill={C.star} outline={0.4} />
         </Animated.View>
         <View style={{ alignItems: 'center', gap: 28 }}>
           <T w={600} s={30} ls={-0.03} accessibilityLiveRegion="polite">

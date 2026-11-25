@@ -1,4 +1,7 @@
 import { ThemeId } from '@/theme';
+import { api, ApiError } from './api';
+import { canBecomeApp } from './page2app';
+import { convertToApp, Live } from './vibecode';
 import { addDays, dotted, parseLooseDate } from './date';
 import { applyCommand, LogField, LOG_FIELDS, Main, newToken, Page, uid } from './page';
 import { defaultWidget } from './widget';
@@ -32,11 +35,11 @@ export const PROMPT_EXAMPLES = [
 ];
 
 function themeFrom(t: string, fallback: ThemeId): ThemeId {
-  if (/하늘|파란|블루/.test(t)) return 'sky';
-  if (/핑크|분홍|로즈/.test(t)) return 'rose';
-  if (/흰|하얀|깔끔/.test(t)) return 'clean';
-  if (/노란|버터/.test(t)) return 'butter';
-  if (/초록|민트/.test(t)) return 'mint';
+  if (/하늘|파란|파랑|블루|blue/i.test(t)) return 'sky';
+  if (/핑크|분홍|로즈|pink/i.test(t)) return 'rose';
+  if (/흰|하얀|하양|화이트|white|깔끔|회색|그레이/i.test(t)) return 'clean';
+  if (/노란|노랑|버터|옐로|yellow/i.test(t)) return 'butter';
+  if (/초록|민트|연두|그린|green/i.test(t)) return 'mint';
   return fallback;
 }
 
@@ -184,4 +187,40 @@ export function followUp(page: Page, text: string): { page: Page; step: string }
   if (!r.page) return { page: null, message: r.message };
   const label: Record<string, string> = { theme: '색 바꾸기', big: '크기 바꾸기', memo: '메모 칸', dim: '끝난 일 흐리게', side: '시간표 칸', name: '이름 바꾸기', main: '할 일 추가' };
   return { page: r.page, step: label[r.change] };
+}
+
+/**
+ * 말로 새 페이지 with the server model. The server builds the page and its build steps; the app
+ * adds the sharing fields. Without a server (offline, error) the local builder above stands in.
+ * 402 (out of AI tries) is passed on so the screen can say so.
+ */
+export async function planWithAi(text: string): Promise<Plan & { left: number | null }> {
+  try {
+    const r = await api.generate(text.trim());
+    const now = Date.now();
+    const page: Page = { ...r.page, id: r.page.id || uid('page'), owner: null, members: [], inviteToken: newToken(), createdAt: now, updatedAt: now };
+    return { page, steps: r.steps, followUps: r.followUps.slice(0, 3), left: r.left };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 402) throw e;
+    return { ...planFromPrompt(text), left: null };
+  }
+}
+
+/** 이어서 말하기: the free-form editor (말로 고치기) on the draft, local rules when offline. */
+export async function followUpWithAi(page: Page, text: string, onLive?: (l: Live) => void, images?: string[]): Promise<({ page: Page; step: string } | { page: null; message: string }) & { left: number | null }> {
+  try {
+    // photos need the model's eyes: always the 바이브 코딩 path
+    const r = canBecomeApp(page) || images?.length ? null : await api.edit(page, text.trim());
+    if (!r || r.escalate) {
+      // the fixed blocks can't do it: rebuild as a code app
+      const c = await convertToApp(page, text.trim(), onLive ?? (() => {}), images);
+      return c.page ? { page: c.page, step: c.summary, left: c.left } : { page: null, message: c.summary, left: c.left };
+    }
+    if (!r.page) return { page: null, message: r.message, left: r.left };
+    const next: Page = { ...page, ...r.page, id: page.id, owner: page.owner, members: page.members, inviteToken: page.inviteToken, createdAt: page.createdAt, updatedAt: Date.now() };
+    return { page: next, step: r.message || '바꿨어요', left: r.left };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 402) throw e;
+    return { ...followUp(page, text), left: null };
+  }
 }

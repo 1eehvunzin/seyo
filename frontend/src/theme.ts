@@ -1,18 +1,31 @@
+/**
+ * seyo design system — same tokens as the landing (seyo_landing/assets/css/style.css):
+ * Apple-gray ink scale + baby pink / baby blue. Pink and blue are fills (ink text on top),
+ * never text colors; the deeper accents are for small marks (dots, rings, progress).
+ */
 export const C = {
   ink: '#1D1D1F',
-  ink2: '#3A3A3C',
-  sub: '#515154',
-  muted: '#6E6E73',
-  faint: '#A1A1A6',
+  ink2: '#424245',
+  sub: '#6E6E73',
+  muted: '#86868B',
+  faint: '#AEAEB2',
   dot: '#C7C7CC',
-  line: '#D2D2D7',
+  line: '#E5E5EA',
   track: '#E5E5EA',
   hair: '#EDEDF0',
   fill: '#F5F5F7',
   white: '#FFFFFF',
+  /** baby pink / blue (landing --pink, --blue and their soft tints) */
+  pink: '#F8D7E2',
+  pinkSoft: '#FCEDF2',
+  blue: '#CFE2F6',
+  blueSoft: '#EEF4FB',
+  /** kept for the butter mood theme */
   butter: '#F6F1CC',
-  accent: '#D69AC9',
-  accentSoft: '#FAEDF6',
+  /** marks and selected borders: the deep end of the "세요" pink↔blue shimmer */
+  accent: '#EC8CB1',
+  accentSoft: '#FCEDF2',
+  accentBlue: '#79A8E6',
   scrim: 'rgba(29, 29, 31, 0.32)',
   kakao: '#FEE500',
   /** row dividers inside a page */
@@ -26,10 +39,16 @@ export const C = {
   /** checked habit / done state */
   done: '#93BBAA',
   doneSoft: '#C9DED4',
-  /** brand star on butter */
-  star: '#B7D0EE',
+  /** brand star: baby blue with an ink outline (landing hero) */
+  star: '#CFE2F6',
   error: '#C2416B',
 };
+
+/** landing cover: baby blue → baby pink */
+export const BRAND_GRADIENT = ['#E3EEFA', '#FBE6EE'] as const;
+
+/** radii from the landing: big panels 32, cards 20, inputs 14, pills full */
+export const R = { lg: 32, md: 20, sm: 14 } as const;
 
 export const F = {
   200: 'Pretendard-ExtraLight',
@@ -49,9 +68,9 @@ export type ThemeId = 'butter' | 'sky' | 'rose' | 'clean' | 'mint';
 export const MOODS: ThemeId[] = ['butter', 'sky', 'rose', 'clean'];
 
 export const THEMES: Record<ThemeId, { label: string; card: string; swatch: string; star: string }> = {
-  butter: { label: 'butter', card: '#FBF8E2', swatch: '#F6F1CC', star: '#B7D0EE' },
-  sky: { label: 'powder blue', card: '#E6EFF9', swatch: '#DCE8F6', star: '#FFFFFF' },
-  rose: { label: 'rose', card: '#F8E6F1', swatch: '#F3DCEC', star: '#93BBAA' },
+  butter: { label: 'butter', card: '#FBF8E2', swatch: '#F6F1CC', star: '#CFE2F6' },
+  sky: { label: 'powder blue', card: '#EEF4FB', swatch: '#CFE2F6', star: '#FFFFFF' },
+  rose: { label: 'rose', card: '#FCEDF2', swatch: '#F8D7E2', star: '#CFE2F6' },
   clean: { label: 'clean', card: '#F5F5F7', swatch: '#F5F5F7', star: '#1D1D1F' },
   mint: { label: 'mint', card: '#E9F1EC', swatch: '#E9F1EC', star: '#93BBAA' },
 };

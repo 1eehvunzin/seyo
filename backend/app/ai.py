@@ -15,6 +15,7 @@ import anthropic
 import openai
 from pydantic import BaseModel, Field
 
+from . import vibe
 from .config import get_settings
 
 log = logging.getLogger("seyo.ai")
@@ -53,7 +54,7 @@ class PagePlan(BaseModel):
     side: Literal["timetable", "week", "none"] = "none"
     memo: bool = False
     steps: list[Step]
-    follow_ups: list[str] = Field(description="이어서 말해 볼 짧은 제안 2개")
+    follow_ups: list[str] = Field(description="사용자가 눌러서 그대로 보낼 다음 요청 2개. 사용자 말투로 '~해줘'로 끝나는 15자 이내 (예: 아래에 메모 칸 넣어줘, 단원별로 나눠줘). 질문 금지")
 
 
 class EditPlan(BaseModel):
@@ -127,7 +128,7 @@ def plan_to_page(plan: PagePlan, today: date | None = None) -> dict:
             main = {"kind": "today3", "todos": todos, "laterCount": 0}
 
     top = None
-    if plan.top_label and kind not in ("habits", "log"):
+    if plan.top_label and (plan.top_date or kind not in ("habits", "log")):
         try:
             d = date.fromisoformat(plan.top_date) if plan.top_date else today + timedelta(days=14)
         except ValueError:
@@ -174,7 +175,7 @@ def apply_edit(page: dict, plan: EditPlan) -> tuple[dict | None, str]:
         main["todos"] = [*main["todos"], {"id": _uid("t"), "text": plan.todo_text or "새 할 일", "done": False}]
         p["main"] = main
     else:
-        return None, plan.message or "아직은 색, 크기, 메모, 시간표, 이름, 할 일 추가만 말로 바꿀 수 있어요"
+        return None, plan.message or OFFLINE
     return p, c
 
 
@@ -184,8 +185,8 @@ _SUBJECTS = ["수학", "영어", "국어", "과학", "화학", "물리", "생명
 
 
 def _theme_from(t: str, fallback: Theme) -> Theme:
-    for pat, theme in ((r"하늘|파란|블루", "sky"), (r"핑크|분홍|로즈", "rose"), (r"흰|하얀|깔끔", "clean"), (r"노란|버터", "butter"), (r"초록|민트", "mint")):
-        if re.search(pat, t):
+    for pat, theme in ((r"하늘|파란|파랑|블루|blue", "sky"), (r"핑크|분홍|로즈|pink", "rose"), (r"흰|하얀|하양|화이트|white|깔끔|회색|그레이", "clean"), (r"노란|노랑|버터|옐로|yellow", "butter"), (r"초록|민트|연두|그린|green", "mint")):
+        if re.search(pat, t, re.I):
             return theme  # type: ignore[return-value]
     return fallback
 
@@ -219,8 +220,8 @@ def rules_plan(t: str) -> PagePlan:
 def rules_edit(t: str) -> EditPlan:
     if m := re.search(r"(?:이름|제목)(?:을|를)?\s*[\"'“]?(.+?)[\"'”]?\s*(?:으로|로)\s*(?:바꿔|해|지어)", t):
         return EditPlan(change="name", name=m.group(1).strip())
-    for pat, theme in ((r"하늘|파란|파랑|블루", "sky"), (r"핑크|분홍|로즈", "rose"), (r"흰|하얀|깔끔|회색", "clean"), (r"노란|노랑|버터", "butter"), (r"초록|민트|연두", "mint")):
-        if re.search(pat, t):
+    for pat, theme in ((r"하늘|파란|파랑|블루|blue", "sky"), (r"핑크|분홍|로즈|pink", "rose"), (r"흰|하얀|하양|화이트|white|깔끔|회색|그레이", "clean"), (r"노란|노랑|버터|옐로|yellow", "butter"), (r"초록|민트|연두|그린|green", "mint")):
+        if re.search(pat, t, re.I):
             return EditPlan(change="theme", theme=theme)  # type: ignore[arg-type]
     if re.search(r"작게|줄여", t):
         return EditPlan(change="big", big=False)
@@ -242,8 +243,10 @@ def rules_edit(t: str) -> EditPlan:
 
 _GEN_SYSTEM = """너는 학생용 아이패드 앱 seyo의 페이지 설계자야. 사용자가 한국어로 말한 요청을 보고, 앱이 가진 고정 블록 중 하나(kind)와 그 내용을 고른다.
 - kind: today3(오늘 할 일), roles(팀원별 역할), milestones(목표까지 중간 마감), wrong(오답노트), timetable(시간표), habits(습관 체크표), log(하루 기록).
+- 시험, 발표, 마감처럼 날짜가 있는 일이 나오면 kind와 상관없이 top_label과 top_date를 채운다 (예: 12월 10일 → 올해 또는 다음 해의 그 날짜).
+- 매일 할 공부나 할 일 목록은 habits보다 today3(또는 마감까지 나눠 하면 milestones)가 맞다. habits는 매일 반복하는 습관(물 마시기, 운동)에만.
 - 요청에 없는 기능을 지어내지 말고, 모르는 날짜는 null로 둔다.
-- steps는 실제로 만든 칸 순서대로, 마지막은 key=widget.
+- steps는 실제로 만든 칸 순서대로, 마지막은 key=widget. 만들지 않은 칸(memo가 false인데 메모 칸, top_label이 없는데 시험 날짜)은 넣지 않는다.
 - 모든 문구는 짧은 한국어. 이모지, 중간점(·), 대시(—) 쓰지 않기."""
 
 _EDIT_SYSTEM = """너는 seyo 페이지 편집기야. 사용자의 한 문장을 보고 아래 중 하나의 변경만 고른다.
@@ -258,21 +261,39 @@ def provider() -> str:
     return "openai" if s.openai_api_key else "anthropic" if s.anthropic_api_key else "rules"
 
 
-async def _parse(system: str, user: str, schema: type[BaseModel]) -> BaseModel | None:
+async def _parse(system: str, user: str, schema: type[BaseModel], small: bool = False) -> BaseModel | None:
+    """small=True uses the cheaper edit models (말로 고치기)."""
     p = provider()
-    if p == "openai" and get_settings().openai_api_key:
+    s = get_settings()
+    if p == "openai" and s.openai_api_key:
+        if small:
+            return await _parse_openai(system, user, schema, s.openai_edit_model, s.openai_edit_reasoning)
         return await _parse_openai(system, user, schema)
-    if p == "anthropic" and get_settings().anthropic_api_key:
-        return await _parse_claude(system, user, schema)
+    if p == "anthropic" and s.anthropic_api_key:
+        return await _parse_claude(system, user, schema, s.claude_edit_model if small else None)
     return None
 
 
 _clients: dict[str, object] = {}
 
+# Set while the model provider is failing (no credits, key revoked, outage). Then the rules still
+# do the basics, but anything else gets an honest "AI is down" instead of a fake "can't do that".
+AI_DOWN: dict[str, str] = {}
+OFFLINE = "AI 서버에 연결이 안 되고 있어요. 잠시 후 다시 해 주세요"
+
+
+def _down(provider: str, e: Exception) -> None:
+    msg = str(getattr(e, "message", e))
+    AI_DOWN[provider] = msg
+    if "credit" in msg.lower() or "quota" in msg.lower() or "billing" in msg.lower():
+        log.critical("%s: OUT OF CREDITS — every AI request falls back to rules until billing is fixed: %s", provider, msg)
+    else:
+        log.error("%s unavailable: %s", provider, msg)
+
 
 def _openai() -> openai.AsyncOpenAI:
     if "openai" not in _clients:
-        _clients["openai"] = openai.AsyncOpenAI(api_key=get_settings().openai_api_key, timeout=30)
+        _clients["openai"] = openai.AsyncOpenAI(api_key=get_settings().openai_api_key, base_url=get_settings().openai_base_url or None, timeout=30)
     return _clients["openai"]  # type: ignore[return-value]
 
 
@@ -282,37 +303,41 @@ def _claude() -> anthropic.AsyncAnthropic:
     return _clients["anthropic"]  # type: ignore[return-value]
 
 
-async def _parse_openai(system: str, user: str, schema: type[BaseModel]) -> BaseModel | None:
+async def _parse_openai(system: str, user: str, schema: type[BaseModel], model: str | None = None, reasoning: str | None = None) -> BaseModel | None:
     s = get_settings()
     client = _openai()
     try:
         resp = await client.responses.parse(
-            model=s.openai_model,
+            model=model or s.openai_model,
             instructions=system,
             input=user,
             text_format=schema,
-            reasoning={"effort": s.openai_reasoning},
+            reasoning={"effort": reasoning or s.openai_reasoning},
             max_output_tokens=8000,
         )
-    except openai.RateLimitError:
-        log.warning("openai rate limited; using rules")
+    except openai.RateLimitError as e:
+        _down("openai", e)
         return None
     except openai.APIStatusError as e:
-        log.error("openai error %s: %s", e.status_code, e.message)
+        _down("openai", e)
         return None
-    except (openai.APIConnectionError, openai.LengthFinishReasonError, openai.ContentFilterFinishReasonError) as e:
+    except openai.APIConnectionError as e:
+        _down("openai", e)
+        return None
+    except (openai.LengthFinishReasonError, openai.ContentFilterFinishReasonError) as e:
         log.warning("openai unusable (%s); using rules", type(e).__name__)
         return None
+    AI_DOWN.clear()
     return resp.output_parsed
 
 
-async def _parse_claude(system: str, user: str, schema: type[BaseModel]) -> BaseModel | None:
+async def _parse_claude(system: str, user: str, schema: type[BaseModel], model: str | None = None) -> BaseModel | None:
     s = get_settings()
     client = _claude()
     try:
         # Server-side fallbacks re-run a policy-declined request on another model in the same call.
         resp = await client.beta.messages.parse(
-            model=s.claude_model,
+            model=model or s.claude_model,
             max_tokens=16000,
             system=system,
             messages=[{"role": "user", "content": user}],
@@ -340,15 +365,54 @@ async def generate(prompt: str) -> tuple[dict, list[dict], list[str], str]:
     source = provider()
     if not isinstance(plan, PagePlan):
         plan, source = rules_plan(prompt), "rules"
-    return plan_to_page(plan), [s.model_dump() for s in plan.steps], plan.follow_ups[:3], source
+    page = plan_to_page(plan)
+    return page, _real_steps(page, plan.steps), plan.follow_ups[:3], source
 
 
-async def edit(page: dict, command: str) -> tuple[dict | None, str, str]:
-    """Returns (new page or None, change or message, source)."""
-    summary = {k: page.get(k) for k in ("name", "theme", "side", "big", "dimDone")} | {"memo_on": page.get("memo") is not None, "kind": page.get("main", {}).get("kind")}
-    plan = await _parse(_EDIT_SYSTEM, f"현재 페이지: {summary}\n요청: {command}", EditPlan)
-    source = provider()
-    if not isinstance(plan, EditPlan):
-        plan, source = rules_edit(command), "rules"
-    new, change = apply_edit(page, plan)
-    return new, change, source
+def _real_steps(page: dict, steps: list[Step]) -> list[dict]:
+    """Keep only steps for sections the page really has (the model sometimes lists ones it didn't make)."""
+    kind = page["main"]["kind"]
+    has = {
+        "top": page.get("top") is not None,
+        "week": page.get("side") == "week",
+        "notes": kind == "wrong" or page.get("memo") is not None,
+        "photo": kind == "wrong",
+        "reason": kind == "wrong",
+        "review": kind == "wrong",
+        "next": kind == "timetable",
+    }
+    out = [s.model_dump() for s in steps if s.key != "widget" and has.get(s.key, True)]
+    if not any(s["key"] == "body" for s in out) and kind != "wrong":
+        out.append({"key": "body", "text": "본문 칸"})
+    return out + [{"key": "widget", "text": next((s.text for s in steps if s.key == "widget"), "홈 위젯 고르기")}]
+
+
+async def edit(page: dict, command: str) -> dict:
+    """말로 고치기. The model edits any part of the page via ops (see vibe.py); without a model,
+    or when the model call fails, the fixed rule menu keeps the basics working.
+
+    Returns {"page", "change", "changed", "message", "source"}; page is None when nothing changed.
+    "escalate": True means the blocks can't do it — the app rebuilds the page as a code app.
+    """
+    user, bag = vibe.prompt_for(page, command)
+    plan = await _parse(vibe.SYSTEM, user, vibe.EditOps, small=True)
+    if isinstance(plan, vibe.EditOps) and plan.ops and vibe.check(page, plan, bag)[0] is None:
+        # one retry with the validation error: cheap, and fixes most slips (null booleans, bad paths)
+        err = vibe.check(page, plan, bag)[1]
+        retry = f"{user}\n\n직전 답의 ops:\n{plan.model_dump_json()}\n\n이 ops는 적용하면 아래 오류가 나요. 고쳐서 다시 주세요.\n{err}"
+        again = await _parse(vibe.SYSTEM, retry, vibe.EditOps, small=True)
+        plan = again if isinstance(again, vibe.EditOps) else plan
+    if isinstance(plan, vibe.EditOps):
+        new, changed, text = vibe.result_page(page, plan, bag)
+        if new is not None:
+            return {"page": new, "change": vibe.highlight_for(changed), "changed": changed, "message": text, "source": provider()}
+        # The fixed blocks can't express it: the app turns this page into a code app (/ai/app with
+        # `page`) that keeps its content and does what was asked. Nothing is refused.
+        return {"page": None, "change": None, "changed": [], "message": "", "escalate": True, "source": provider()}
+    # no model or model error → fixed rules
+    rplan = rules_edit(command)
+    new, change = apply_edit(page, rplan)
+    if new is None:
+        return {"page": None, "change": None, "changed": [], "message": OFFLINE, "source": "rules"}
+    key = {"dim": "dimDone"}.get(change, "main" if change == "add_todo" else change)
+    return {"page": new, "change": "main" if change == "add_todo" else change, "changed": [key], "message": "바뀌었어요", "source": "rules"}

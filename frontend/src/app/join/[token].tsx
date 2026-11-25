@@ -2,7 +2,7 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { LoginSheet } from '@/components/Sheets';
-import { PrimaryButton, Screen, Star, T } from '@/components/ui';
+import { BrandBg, PrimaryButton, Screen, Star, T } from '@/components/ui';
 import { useStore } from '@/store';
 import { C } from '@/theme';
 
@@ -27,9 +27,10 @@ export default function Join() {
   }
 
   return (
-    <Screen bg={C.butter}>
+    <Screen bg={C.white}>
+      <BrandBg />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, padding: 32 }}>
-        <Star size={72} fill={C.star} />
+        <Star size={72} fill={C.star} outline={0.4} />
         {loggedIn ? (
           <>
             <T w={600} s={28} ls={-0.03} center>

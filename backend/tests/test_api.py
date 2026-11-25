@@ -115,8 +115,98 @@ def test_ai_generate_and_edit_rules(client):
     assert r["steps"][-1]["key"] == "widget"
     e = client.post("/ai/edit", json={"page": r["page"], "command": "하늘색으로 바꿔줘"}, headers=h).json()
     assert e["change"] == "theme" and e["page"]["theme"] == "sky"
+    left = e["left"]
     e = client.post("/ai/edit", json={"page": r["page"], "command": "주말 칸도 만들어줘"}, headers=h).json()
     assert e["page"] is None and e["message"]
+    assert e["left"] == left  # a failed edit doesn't use up a try
+
+
+def test_monthly_ai_limit(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "free_ai_edits_per_month", 2)
+    h = login(client, "a", "현진")
+    for _ in range(2):
+        assert client.post("/ai/edit", json={"page": PAGE, "command": "하늘색으로"}, headers=h).status_code == 200
+    assert client.post("/ai/edit", json={"page": PAGE, "command": "하늘색으로"}, headers=h).status_code == 402
+    assert client.get("/ai/usage", headers=h).json()["left"] == 0
+    client.post("/billing/dev-plus", headers=h)
+    assert client.post("/ai/edit", json={"page": PAGE, "command": "하늘색으로"}, headers=h).status_code == 200
+
+
+def test_guest_edit_limit(client):
+    g = {"X-Device-Id": "install-abc12345"}
+    assert client.get("/ai/guest/usage", headers=g).json() == {"limit": 5, "left": 5, "period": "trial"}
+    for i in range(5):
+        r = client.post("/ai/guest/edit", json={"page": PAGE, "command": "하늘색으로 바꿔줘"}, headers=g)
+        assert r.status_code == 200 and r.json()["left"] == 4 - i
+    assert client.post("/ai/guest/edit", json={"page": PAGE, "command": "하늘색으로 바꿔줘"}, headers=g).status_code == 402
+    # another install is separate; a missing id is refused
+    assert client.post("/ai/guest/edit", json={"page": PAGE, "command": "메모 칸 넣어줘"}, headers={"X-Device-Id": "install-zzz99999"}).json()["page"]["memo"] == ""
+    assert client.post("/ai/guest/edit", json={"page": PAGE, "command": "메모"}).status_code == 400
+
+
+def test_vibe_ops_apply_and_validate():
+    from app import vibe
+
+    page = {**PAGE, "id": "page_1", "inviteToken": "tok", "main": {**PAGE["main"], "todos": [{"id": "t1", "text": "쎈", "done": True}]}}
+    # add two todos, rename one, move to sky: the checked todo stays checked, ids are filled
+    plan = vibe.EditOps(
+        ops=[
+            vibe.Op(op="insert", path="main.todos.-", value='{"id":"","subject":"영어","text":"단어 50개","done":false}'),
+            vibe.Op(op="insert", path="main.todos.-", value='{"id":"","text":"국어 비문학","done":false}'),
+            vibe.Op(op="set", path="theme", value='"sky"'),
+        ],
+        summary="할 일 2개를 더 넣었어요",
+        message=None,
+    )
+    new, changed, text = vibe.result_page(page, plan, [])
+    assert new is not None and set(changed) == {"main", "theme"} and text.startswith("할 일")
+    todos = new["main"]["todos"]
+    assert todos[0] == {"id": "t1", "text": "쎈", "done": True} and len(todos) == 3 and all(t["id"] for t in todos)
+    assert new["inviteToken"] == "tok" and vibe.highlight_for(changed) == "main"
+
+    # switching kind: whole main replaced
+    plan = vibe.EditOps(ops=[vibe.Op(op="set", path="main", value='{"kind":"habits","habits":[{"id":"","name":"물 마시기","week":[]}],"remind":false}')], summary="습관 체크로 바꿨어요", message=None)
+    new, _, _ = vibe.result_page(page, plan, [])
+    assert new["main"]["habits"][0]["week"] == [False] * 7
+
+    # protected fields, broken shapes and unknown kinds are rejected
+    for bad in (
+        vibe.Op(op="set", path="inviteToken", value='"x"'),
+        vibe.Op(op="set", path="theme", value='"purple"'),
+        vibe.Op(op="set", path="main", value='{"kind":"kanban"}'),
+        vibe.Op(op="set", path="main.todos.9.text", value='"x"'),
+        vibe.Op(op="set", path="name", value="not json"),
+    ):
+        new, _, msg = vibe.result_page(page, vibe.EditOps(ops=[bad], summary="", message=None), [])
+        assert new is None and msg
+
+
+def test_vibe_keeps_photos_out_of_prompt():
+    from app import vibe
+
+    photo = "data:image/jpeg;base64," + "A" * 5000
+    page = {**PAGE, "main": {"kind": "wrong", "photo": photo, "reasons": ["계산 실수"], "reason": None, "reviewInDays": 3, "notes": [], "units": None, "unit": None, "retryCount": None, "stats": False, "entries": []}}
+    prompt, bag = vibe.prompt_for(page, "단원별로 나눠줘")
+    assert photo not in prompt and "@keep0" in prompt
+    plan = vibe.EditOps(ops=[vibe.Op(op="set", path="main.units", value='["1단원","2단원"]')], summary="단원으로 나눴어요", message=None)
+    new, _, _ = vibe.result_page(page, plan, bag)
+    assert new["main"]["photo"] == photo and new["main"]["units"] == ["1단원", "2단원"]
+
+
+def test_generate_steps_match_page():
+    from app import ai
+
+    plan = ai.PagePlan(
+        name="수학 공부", theme="sky", kind="habits", top_label="중간고사", top_date="2026-12-10", habits=["개념 복습"], memo=False,
+        steps=[ai.Step(key="top", text="시험 날짜 칸"), ai.Step(key="notes", text="메모 칸"), ai.Step(key="week", text="이번 주"), ai.Step(key="widget", text="위젯")],
+        follow_ups=[],
+    )
+    page = ai.plan_to_page(plan)
+    assert page["top"] == {"kind": "dday", "label": "중간고사", "date": "2026. 12. 10"}  # a date wins over the habit streak
+    keys = [s["key"] for s in ai._real_steps(page, plan.steps)]
+    assert keys == ["top", "body", "widget"]  # no memo / week sections → those steps are dropped
 
 
 def test_rule_parsers():
@@ -152,3 +242,143 @@ def test_reminders_due(client):
         db.commit()
         msgs = due_messages(db, datetime.now(timezone.utc))
     assert {m[1] for m in msgs} == {"오답", "하루"}
+
+
+def test_code_create_and_blocks():
+    from app import code
+
+    html, summary = code.split_created("<!-- 요약: 타이머를 만들었어요 -->\n<!doctype html><html><head><title>타이머</title></head><body><p>0</p>\n  <button>시작</button>\n</body></html>")
+    assert html.startswith("<!doctype") and summary == "타이머를 만들었어요"
+
+    edit = "버튼 글자를 바꿨어요\n<<<<<<< SEARCH\n<button>시작</button>\n=======\n<button>출발</button>\n>>>>>>> REPLACE"
+    new, s, n = code.apply_blocks(html, edit)
+    assert n == 1 and "<button>출발</button>" in new and "  <button>출발" in new and s == "버튼 글자를 바꿨어요"
+    # indentation drift still applies; a block that isn't in the file is reported
+    assert "<a>1</a>" in code.apply_blocks(new, "x\n<<<<<<< SEARCH\n      <button>출발</button>\n=======\n<a>1</a>\n>>>>>>> REPLACE")[0]
+    assert code.apply_blocks(html, "x\n<<<<<<< SEARCH\n<div>없음</div>\n=======\n<p>1</p>\n>>>>>>> REPLACE")[0] is None
+    # no blocks = the model explained why it can't
+    assert code.apply_blocks(html, "인터넷은 쓸 수 없어요. 대신 직접 적는 칸은 어때요?") == (html, "인터넷은 쓸 수 없어요. 대신 직접 적는 칸은 어때요?", 0)
+
+
+def test_code_app_guest_needs_device(client, monkeypatch):
+    from app import code
+
+    monkeypatch.setattr(code, "available", lambda: True)
+    # before login it runs on the onboarding tries, which need an install id
+    assert client.post("/ai/app", json={"prompt": "타이머"}).status_code == 400
+
+
+def test_edit_says_ai_is_down_instead_of_cant():
+    import asyncio
+
+    from app import ai
+
+    r = asyncio.run(ai.edit(PAGE, "배경을 화이트로 바꿔줘"))
+    assert r["page"]["theme"] == "clean"  # rules know 화이트 now
+    r = asyncio.run(ai.edit(PAGE, "공부하면 캐릭터가 자라게 해줘"))
+    assert r["page"] is None and "아직" not in r["message"]
+
+
+def test_code_blocks_malformed_and_checklist():
+    from app import code
+
+    html = "<!doctype html><html><body>\n<p>a</p>\n<script>\nlet x = 1;\n</script>\n</body></html>"
+    # a doubled separator must not leak into the code
+    bad = "고쳤어요\n<<<<<<< SEARCH\nlet x = 1;\n=======\nlet x = 2;\n=======\nlet y = 3;\n>>>>>>> REPLACE"
+    assert code.apply_blocks(html, bad)[0] is None
+    assert code.lint(html.replace("let x = 1;", "=======")) and "=======" in code.lint(html.replace("let x = 1;", "=======\n"))[0] + "======="
+    good = "타이머를 넣었어요\n- 제한시간 바: 마크업, 타이머\n- 콤보: 상태, render\n<<<<<<< SEARCH\nlet x = 1;\n=======\nlet x = 2;\n>>>>>>> REPLACE"
+    new, summary, n = code.apply_blocks(html, good)
+    assert n == 1 and "let x = 2;" in new and summary == "타이머를 넣었어요"
+    assert code.checklist(good) == ["제한시간 바: 마크업, 타이머", "콤보: 상태, render"]
+
+
+def test_code_blocks_partial_keeps_good_blocks():
+    from app import code
+
+    html = "<!doctype html><html><body>\n<p>a</p>\n<p>b</p>\n<script>\nlet x = 1;\n</script>\n</body></html>"
+    out = (
+        "고쳤어요\n<<<<<<< SEARCH\n<p>a</p>\n=======\n<p>A</p>\n>>>>>>> REPLACE\n"
+        "<<<<<<< SEARCH\n<p>b</p>\n<p>B</p>\n>>>>>>> REPLACE\n"  # missing =======
+        "<<<<<<< SEARCH\nlet x = 1;\n=======\nlet x = 2;\n>>>>>>> REPLACE\n*** End Patch"
+    )
+    assert code.apply_blocks(html, out)[0] is None
+    new, n, failed = code.apply_partial(html, out)
+    assert n == 2 and "<p>A</p>" in new and "let x = 2;" in new and "<p>b</p>" in new
+    assert len(failed) == 1 and "<p>B</p>" in failed[0]
+    assert not code.lint(new.replace("<p>b</p>", "")) or "Patch" not in "".join(code.lint(new))
+
+
+def test_code_blocks_near_miss_markers():
+    from app import code
+
+    html = "<p>a</p>\n<script>\nif (a === b) x = 1;\n</script>"
+    out = "고쳤어요\n<<<<<<< SEARCH\n<p>a</p>\n=======\n<p>A</p>\n>>>>>>\n<<<<<< SEARCH\nif (a === b) x = 1;\n========\nif (a === b) x = 2;\n>>>>>>> REPLACE"
+    new, _, n = code.apply_blocks(html, out)
+    assert n == 2 and "<p>A</p>" in new and "x = 2;" in new and "a === b" in new
+
+
+def test_code_blocks_diff_style_replace_is_rejected():
+    from app import code
+
+    html = "<script>\nlet a = 1;\nlet b = 2;\n</script>\n</html>"
+    out = "고쳤어요\n<<<<<<< SEARCH\nlet a = 1;\n=======\n+  let a = 3;\n+  let c = 4;\n@@\n>>>>>>> REPLACE\n<<<<<<< SEARCH\nlet b = 2;\n=======\nlet b = 5;\n>>>>>>> REPLACE"
+    assert code.apply_blocks(html, out)[0] is None
+    new, n, failed = code.apply_partial(html, out)
+    assert n == 1 and "let b = 5;" in new and "let a = 1;" in new and len(failed) == 1
+    assert any("diff" in i for i in code.lint(html.replace("let a = 1;", "+  let a = 3;\n+  x();\n+  y();")))
+    assert not code.lint("<!doctype html><html><body><script>\nconst x = a - b;\nlet y = -1;\n</script></body></html>")
+
+
+def test_code_photo_slots_and_stash():
+    from app import code
+
+    img = "data:image/jpeg;base64," + "A" * 400
+    html = f'<img src="{img}"><p>x</p>'
+    short, kept = code.stash_images(html)
+    assert img not in short and "data:seyo/0" in short and kept == [img]
+    assert code.unstash_images(short, kept) == html
+    assert code.fill_photos('<img src="{{photo1}}"><img src="{{ photo2 }}">', [img]) == f'<img src="{img}"><img src="">'
+    assert "{{photo1}}" in code._photo_note([img], place=True) and "{{photo1}}" not in code._photo_note([img]) and code._photo_note([]) == ""
+    assert code.wants_photo_in_page("이 사진을 배경으로 써줘") and code.wants_photo_in_page("로고로 넣어줘")
+    assert not code.wants_photo_in_page("위클리 만들어줘") and not code.wants_photo_in_page("이 느낌으로 독서기록장")
+
+
+def test_pinterest_links_and_host_guard():
+    import asyncio
+
+    from app import pinterest
+
+    assert pinterest.find_link("이 느낌으로 https://pin.it/3xYz9AbC 해줘") == "https://pin.it/3xYz9AbC"
+    assert pinterest.find_link("https://www.pinterest.com/pin/123456789/") == "https://www.pinterest.com/pin/123456789/"
+    assert pinterest.find_link("https://kr.pinterest.com/pin/987/") == "https://kr.pinterest.com/pin/987/"
+    assert pinterest.find_link("https://example.com/pin/1") is None
+    # only Pinterest hosts are fetched, even if a "pin link" check were bypassed
+    for bad in ["https://example.com/x", "https://pinterest.com.evil.io/pin/1", "http://169.254.169.254/latest"]:
+        try:
+            asyncio.run(pinterest.pin_image(bad))
+            raise AssertionError(bad)
+        except pinterest.PinError:
+            pass
+
+
+def test_guest_first_page_is_free(client, monkeypatch):
+    """Onboarding: making the first page doesn't use one of the 5 tries; edits do."""
+    import json as _json
+
+    from app import code
+
+    async def fake_run(prompt, html, name=None, page=None, images=None):
+        yield _json.dumps({"t": "done", "html": "<!doctype html><html><body>x</body></html>", "summary": "만들었어요"}) + "\n"
+
+    monkeypatch.setattr(code, "available", lambda: True)
+    monkeypatch.setattr(code, "run", fake_run)
+    g = {"X-Device-Id": "install-free0001"}
+
+    def last(r):
+        return _json.loads(r.text.strip().split("\n")[-1])
+
+    for _ in range(2):  # the first page and one retry
+        assert last(client.post("/ai/app", json={"prompt": "위클리 만들어줘"}, headers=g))["left"] == 5
+    assert last(client.post("/ai/app", json={"prompt": "또 만들어줘"}, headers=g))["left"] == 4  # past the free ones
+    assert last(client.post("/ai/app", json={"prompt": "색 바꿔줘", "html": "<html></html>"}, headers=g))["left"] == 3

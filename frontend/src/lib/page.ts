@@ -44,7 +44,9 @@ export type Main =
       /** saved problems; reviewAt = start-of-day ms when it should be solved again */
       entries: { id: string; reason: string | null; unit: string | null; reviewAt: number }[];
     }
-  | { kind: 'timetable' };
+  | { kind: 'timetable' }
+  /** 바이브 코딩: an HTML/JS app the AI wrote. `state` is what the app saved with seyo.save(). */
+  | { kind: 'app'; html: string; state: Record<string, unknown> };
 
 export type Side = 'timetable' | 'week' | null;
 
@@ -408,6 +410,8 @@ export function buildFirstPage(a: Answers, today = new Date()): { page: Page; st
 export const newToken = () => Math.random().toString(36).slice(2, 10);
 
 export function tutorialExamples(page: Page) {
+  // 바이브 코딩 pages: anything goes, so show the kinds of things people actually ask
+  if (page.main.kind === 'app') return ['파스텔톤으로 바꿔줘', '글자 더 크게 해줘', '체크하면 귀여운 효과 넣어줘'];
   const top = page.top?.kind === 'dday' ? 'd-day 더 크게 보여줘' : '숫자 더 크게 보여줘';
   return ['하늘색으로 바꿔줘', top, '아래에 메모 칸 넣어줘'];
 }
@@ -421,11 +425,11 @@ export function applyCommand(page: Page, raw: string): CommandResult {
   const p: Page = { ...page };
   const rename = t.match(/(?:이름|제목)(?:을|를)?\s*["'“]?(.+?)["'”]?\s*(?:으로|로)\s*(?:바꿔|해|지어)/);
   if (rename) return { page: { ...p, name: rename[1].trim() }, change: 'name' };
-  if (/하늘|파란|파랑|블루/.test(t)) return { page: { ...p, theme: 'sky' }, change: 'theme' };
-  if (/핑크|분홍|로즈/.test(t)) return { page: { ...p, theme: 'rose' }, change: 'theme' };
-  if (/흰|하얀|깔끔|회색/.test(t)) return { page: { ...p, theme: 'clean' }, change: 'theme' };
-  if (/노란|노랑|버터/.test(t)) return { page: { ...p, theme: 'butter' }, change: 'theme' };
-  if (/초록|민트|연두/.test(t)) return { page: { ...p, theme: 'mint' }, change: 'theme' };
+  if (/하늘|파란|파랑|블루|blue/i.test(t)) return { page: { ...p, theme: 'sky' }, change: 'theme' };
+  if (/핑크|분홍|로즈|pink/i.test(t)) return { page: { ...p, theme: 'rose' }, change: 'theme' };
+  if (/흰|하얀|하양|화이트|white|깔끔|회색|그레이/i.test(t)) return { page: { ...p, theme: 'clean' }, change: 'theme' };
+  if (/노란|노랑|버터|옐로|yellow/i.test(t)) return { page: { ...p, theme: 'butter' }, change: 'theme' };
+  if (/초록|민트|연두|그린|green/i.test(t)) return { page: { ...p, theme: 'mint' }, change: 'theme' };
   if (/작게|줄여/.test(t)) return { page: { ...p, big: false }, change: 'big' };
   if (/크게|키워/.test(t)) return { page: { ...p, big: true }, change: 'big' };
   if (/메모/.test(t) && /(빼|없애|지워)/.test(t)) return { page: { ...p, memo: null }, change: 'memo' };
@@ -443,7 +447,7 @@ export function applyCommand(page: Page, raw: string): CommandResult {
       };
     }
   }
-  return { page: null, message: '아직은 색, 크기, 메모, 시간표, 이름, 할 일 추가만 말로 바꿀 수 있어요' };
+  return { page: null, message: '인터넷에 연결되면 말한 대로 바꿀 수 있어요' };
 }
 
 /* ───────── sample data so Home matches the design (오답노트, 시간표, 초대받은 영단어 챌린지) ───────── */

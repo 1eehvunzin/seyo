@@ -1,19 +1,26 @@
+import json
+import logging
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from fastapi.responses import HTMLResponse
+import httpx
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import ai
-from .auth import LoginError, current_user, issue_token, upsert_user, verify_apple, verify_kakao
+from . import ai, code, pinterest
+from .auth import LoginError, current_user, optional_user, issue_token, upsert_user, verify_apple, verify_kakao
 from .billing import BillingError, verify_apple_jws, verify_signed_transaction
 from .config import get_settings
-from .db import get_db
-from .models import AiUsage, Device, Membership, Page, Purchase, User, new_token, now
+from .db import SessionLocal, get_db
+from .models import AiUsage, Device, GuestUsage, Membership, Page, Purchase, User, new_token, now
 from .serialize import page_out, person
+
+log = logging.getLogger("seyo.routes")
 
 router = APIRouter()
 
@@ -282,32 +289,232 @@ class EditIn(BaseModel):
     command: str = Field(min_length=1, max_length=500)
 
 
-def _count_edit(db: Session, user: User) -> None:
+def _month_used(db: Session, user: User) -> int:
+    month = _kst_day()[:7]
+    return int(db.query(func.coalesce(func.sum(AiUsage.edits), 0)).filter(AiUsage.user_id == user.id, AiUsage.day.like(f"{month}-%")).scalar() or 0)
+
+
+def _user_limit(user: User) -> int:
     s = get_settings()
+    return s.plus_ai_edits_per_month if user.is_plus() else s.free_ai_edits_per_month
+
+
+def _count_edit(db: Session, user: User) -> int:
+    """Counts one AI use (generate or edit) and returns how many are left this month."""
+    limit, used = _user_limit(user), _month_used(db, user)
+    if used >= limit:
+        msg = "이번 달 쓸 수 있는 만큼 다 썼어요. 다음 달 1일에 다시 채워져요" if user.is_plus() else "이번 달 무료로 고칠 수 있는 만큼 다 썼어요"
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, msg)
     row = db.get(AiUsage, (user.id, _kst_day()))
     if row is None:
         row = AiUsage(user_id=user.id, day=_kst_day(), edits=0)
         db.add(row)
-    if not user.is_plus() and row.edits >= s.free_ai_edits_per_day:
-        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "오늘 무료로 고칠 수 있는 만큼 다 썼어요")
     row.edits += 1
     db.commit()
+    return limit - used - 1
+
+
+def _month_left(db: Session, user: User) -> int:
+    left = _user_limit(user) - _month_used(db, user)
+    if left <= 0:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "이번 달 쓸 수 있는 만큼 다 썼어요")
+    return left
+
+
+def _refund_user(db: Session, user: User) -> None:
+    """The edit didn't change anything: give the use back."""
+    row = db.get(AiUsage, (user.id, _kst_day()))
+    if row and row.edits > 0:
+        row.edits -= 1
+        db.commit()
+
+
+@router.get("/ai/usage", tags=["ai"])
+def ai_usage(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    limit = _user_limit(user)
+    return {"limit": limit, "left": max(0, limit - _month_used(db, user)), "period": "month"}
 
 
 @router.post("/ai/generate", tags=["ai"])
 async def ai_generate(body: GenerateIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    _count_edit(db, user)
+    left = _count_edit(db, user)
     page, steps, follow_ups, source = await ai.generate(body.prompt)
-    return {"page": page, "steps": steps, "followUps": follow_ups, "source": source}
+    return {"page": page, "steps": steps, "followUps": follow_ups, "source": source, "left": left}
 
 
 @router.post("/ai/edit", tags=["ai"])
 async def ai_edit(body: EditIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    _count_edit(db, user)
-    page, change, source = await ai.edit(body.page, body.command)
-    if page is None:
-        return {"page": None, "message": change, "source": source}
-    return {"page": page, "change": change, "source": source}
+    left = _count_edit(db, user)
+    r = await ai.edit(body.page, body.command)
+    if r["page"] is None:
+        _refund_user(db, user)
+        left += 1
+    return {**r, "left": left}
+
+
+class AppIn(BaseModel):
+    prompt: str = Field(min_length=1, max_length=1000)
+    html: str | None = Field(None, max_length=code.MAX_HTML)
+    name: str | None = Field(None, max_length=40)
+    # repair mode: the app reported this runtime error; the server writes the request itself
+    error: str | None = Field(None, max_length=300)
+    # a fixed-block page to rebuild as a code app (the block editor couldn't do the request)
+    page: dict[str, Any] | None = None
+    # photos attached to the request (shrunk JPEG data URLs): a design reference by default
+    images: list[str] = Field(default_factory=list, max_length=code.MAX_IMAGES)
+
+
+@router.post("/ai/app", tags=["ai"])
+async def ai_app(
+    body: AppIn,
+    request: Request,
+    user: User | None = Depends(optional_user),
+    x_device_id: str | None = Header(None),
+    db: Session = Depends(get_db),
+):
+    """바이브 코딩: create (no html), edit (html), or convert a block page (page) into a code app.
+    NDJSON stream, see app/code.py. Before login it runs on the onboarding tries."""
+    if not code.available():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "지금은 AI를 쓸 수 없어요")
+    repair = bool(body.error and body.html)
+    images = [] if repair else [u for u in body.images if u.startswith("data:image/") and len(u) <= code.MAX_IMAGE_CHARS]
+    prompt = code.repair_prompt(body.error, body.html) if repair else body.prompt
+    if user is None:
+        left, refund = _guest_take(db, request, x_device_id, free=repair, create=not body.html and not body.page)
+    else:
+        # fixing a crash the AI caused doesn't use up a try
+        left = _month_left(db, user) if repair else _count_edit(db, user)
+        uid = user.id
+
+        def refund() -> None:
+            with SessionLocal() as s:
+                u = s.get(User, uid)
+                if u:
+                    _refund_user(s, u)
+
+    async def events():
+        ok = False
+        async for line in code.run(prompt, body.html, body.name, None if body.html else body.page, images):
+            ev = json.loads(line)
+            if ev["t"] == "done":
+                ok = ev.get("html") is not None
+                u = ev.pop("usage", None)
+                if u:
+                    log.info("ai/app tokens %s", u)
+                ev["left"] = left if ok or repair else left + 1
+                line = json.dumps(ev, ensure_ascii=False) + "\n"
+            yield line
+        if not ok and not repair:  # failed: give the try back
+            refund()
+
+    return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ───────── AI during onboarding (no account yet) ─────────
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+
+def _guest_row(db: Session, kind: str, key: str, day: str = "") -> GuestUsage:
+    row = db.get(GuestUsage, (kind, key, day))
+    if row is None:
+        row = GuestUsage(kind=kind, key=key, day=day, edits=0)
+        db.add(row)
+    return row
+
+
+def _guest_device(device_id: str | None) -> str:
+    if not device_id or not (8 <= len(device_id) <= 64) or not device_id.replace("-", "").replace("_", "").isalnum():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "잠시 후 다시 해 주세요")
+    return device_id
+
+
+class PinIn(BaseModel):
+    url: str = Field(min_length=10, max_length=300)
+
+
+@router.post("/ref/pinterest", tags=["ai"])
+async def ref_pinterest(body: PinIn):
+    """A pasted Pinterest pin link → its image (data URL), attached to the request as a reference.
+    Only Pinterest hosts are fetched (see app/pinterest.py)."""
+    link = pinterest.find_link(body.url)
+    if not link:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "핀터레스트 핀 링크를 붙여넣어 주세요")
+    try:
+        return {"image": await pinterest.pin_image(link)}
+    except pinterest.PinError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+    except httpx.HTTPError:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "핀터레스트에 연결하지 못했어요. 이미지를 복사해서 붙여넣어 주세요") from None
+
+
+@router.get("/ai/guest/usage", tags=["ai"])
+def ai_guest_usage(x_device_id: str | None = Header(None), db: Session = Depends(get_db)):
+    s = get_settings()
+    row = db.get(GuestUsage, ("device", _guest_device(x_device_id), ""))
+    return {"limit": s.guest_ai_edits, "left": max(0, s.guest_ai_edits - (row.edits if row else 0)), "period": "trial"}
+
+
+def _guest_take(db: Session, request: Request, device_id: str | None, free: bool = False, create: bool = False):
+    """One onboarding try (device lifetime + IP daily). Returns (left, refund).
+    `create`: making the first page — the onboarding's whole point — doesn't use one of the tries
+    (GUEST_FREE_CREATES per device, still inside the IP daily cap); past that it's a normal try."""
+    s = get_settings()
+    dev_key, ip_key, day = _guest_device(device_id), _client_ip(request), _kst_day()
+    dev = _guest_row(db, "device", dev_key)
+    ip = _guest_row(db, "ip", ip_key, day)
+    taken: list[tuple[str, str, str]] = []
+    if not free:
+        made = _guest_row(db, "create", dev_key) if create else None
+        if ip.edits >= s.guest_ai_edits_per_ip_per_day:
+            db.rollback()
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "저장하고 시작하면 무료로 계속 만들 수 있어요")
+        if made is not None and made.edits < s.guest_free_creates:
+            made.edits += 1
+            taken.append(("create", dev_key, ""))
+        else:
+            if dev.edits >= s.guest_ai_edits:
+                db.rollback()
+                raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "저장하고 시작하면 무료로 계속 바꿀 수 있어요")
+            dev.edits += 1
+            taken.append(("device", dev_key, ""))
+        ip.edits += 1
+        taken.append(("ip", ip_key, day))
+    db.commit()
+    left = max(0, s.guest_ai_edits - dev.edits)
+
+    def refund() -> None:
+        with SessionLocal() as s2:
+            for key in taken:
+                row = s2.get(GuestUsage, key)
+                if row and row.edits > 0:
+                    row.edits -= 1
+            s2.commit()
+
+    return left, refund
+
+
+@router.post("/ai/guest/edit", tags=["ai"])
+async def ai_guest_edit(body: EditIn, request: Request, x_device_id: str | None = Header(None), db: Session = Depends(get_db)):
+    """말로 고치기 in the onboarding tutorial. Free tries per install, then 저장하고 시작하기 (login)."""
+    s = get_settings()
+    dev = _guest_row(db, "device", _guest_device(x_device_id))
+    ip = _guest_row(db, "ip", _client_ip(request), _kst_day())
+    if dev.edits >= s.guest_ai_edits or ip.edits >= s.guest_ai_edits_per_ip_per_day:
+        db.rollback()
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "저장하고 시작하면 무료로 계속 바꿀 수 있어요")
+    dev.edits += 1
+    ip.edits += 1
+    db.commit()
+    r = await ai.edit(body.page, body.command)
+    if r["page"] is None:  # nothing changed → the try is given back
+        dev.edits -= 1
+        ip.edits -= 1
+        db.commit()
+    return {**r, "left": max(0, s.guest_ai_edits - dev.edits)}
 
 
 # ───────── billing ─────────

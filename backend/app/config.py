@@ -27,15 +27,31 @@ class Settings(BaseSettings):
     # Page generation and "말로 고치기". auto = OpenAI if its key is set, else Claude, else rules.
     ai_provider: str = "auto"  # auto | openai | anthropic | rules
     openai_api_key: str = ""
+    # an OpenAI-compatible gateway (e.g. a reseller: https://apirouter.pleum.ai/v1); empty = OpenAI itself
+    openai_base_url: str = ""
     openai_model: str = "gpt-5.5"
     openai_reasoning: str = "low"  # minimal | low | medium | high
     anthropic_api_key: str = ""
     claude_model: str = "claude-opus-5-5"
     claude_effort: str = "low"  # low | medium | high
+    # 말로 고치기 runs on a small model: one edit ≈ 2.5k input + ~1k output tokens.
+    # gpt-5-mini ($0.25 / $2 per 1M) ≈ $0.003 (about ₩4) per edit; gpt-5.5 would be ≈ 10x.
+    openai_edit_model: str = "gpt-5-mini"
+    openai_edit_reasoning: str = "low"
+    claude_edit_model: str = "claude-haiku-5-5"
+    # 바이브 코딩 (HTML 앱 생성/수정, streamed). Speed matters most: small model, minimal reasoning.
+    openai_code_model: str = "gpt-5.4-mini"  # measured fastest: ~600 chars/s, a new app in ~15s
+    openai_code_reasoning: str = "none"
+    claude_code_model: str = "claude-haiku-5-5"
 
-    # Free plan limits (placeholders until pricing is decided)
+    # Free plan limits. AI counts = generate + edit, KST calendar month.
     free_pages: int = 5
-    free_ai_edits_per_day: int = 20
+    free_ai_edits_per_month: int = 30  # 바이브 코딩 ≈ ₩15–25 a try → worst case ≈ ₩600 per free user per month
+    plus_ai_edits_per_month: int = 300  # fair-use cap, ≈ ₩6,000 worst case vs ₩4,900/월 (most use far less)
+    # Onboarding before login (no account): per device, lifetime, plus a per-IP daily backstop
+    guest_ai_edits: int = 5
+    guest_free_creates: int = 2  # onboarding first page (+ one retry) doesn't use a try
+    guest_ai_edits_per_ip_per_day: int = 40
 
     # Invite links
     public_base_url: str = "http://localhost:8000"

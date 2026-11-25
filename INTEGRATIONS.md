@@ -17,7 +17,7 @@
 | 8 | 초대 링크 도메인 | 도메인 구매 | `PUBLIC_BASE_URL`, `APP_STORE_URL` | `http://localhost:8000/join/...` |
 | 9 | 서버 배포 | 호스팅 선택 | `ENV=prod` 외 | 로컬 실행 |
 | 10 | 약관, 개인정보, 만 14세 미만 | 법무 결정 | 앱 문구, 링크 | 자리표시 `[이용약관 본문]` |
-| 11 | 가격, 무료 한도 | 기획 결정 | 앱 문구, `FREE_PAGES`, `FREE_AI_EDITS_PER_DAY` | `[₩00,000]`, 페이지 5개, 하루 20회 |
+| 11 | 가격, 무료 한도 | 정함 (아래 11번) | `Sheets.tsx`의 `PLANS`, `FREE_PAGES`, `*_AI_EDITS_PER_MONTH` | 월 ₩4,900 / 연 ₩39,000, 무료 월 30회, 구독 월 300회 |
 
 ---
 
@@ -27,8 +27,33 @@
 - **넣기**: `ANTHROPIC_API_KEY=sk-ant-...`
 - **설정값**: 모델 `claude-opus-5-5`, 생각 깊이 `CLAUDE_EFFORT=low`. 한 문장 요청이라 low로 시작했어요. 결과가 아쉬우면 `medium`으로 올려 보세요.
 - **안전장치**: 정책상 거절되면 다른 모델로 한 번 더 시도하는 서버 측 fallback을 켜 뒀어요 (`server-side-fallback-2026-07-01` 베타). 키가 없거나 에러가 나면 자동으로 키워드 규칙으로 처리해서 앱이 멈추지 않아요.
-- **비용**: Opus 5.5 기준 입력 100만 토큰당 $4, 출력 100만 토큰당 $20. 무료 사용자는 하루 `FREE_AI_EDITS_PER_DAY`회로 막혀 있어요.
-- **코드**: `backend/app/ai.py`. 모델은 정해진 블록 7종 중 하나만 고르고(structured output), 화면 모양은 서버가 만들어요.
+- **코드**: `backend/app/ai.py`(새 페이지), `backend/app/vibe.py`(말로 고치기).
+- **말로 고치기 (자유 수정)**: 모델이 페이지의 어느 부분이든 고쳐요 (할 일 추가, 삭제, 문구, 날짜, 종류 바꾸기, 위젯 등). 모델은 페이지 전체가 아니라 바꿀 곳만 ops(set/insert/remove)로 돌려주고, 서버가 앱이 그릴 수 있는 모양(`PageDoc`)인지 검사한 뒤에만 반영해요. 검사에서 걸리면 오류를 붙여 한 번 다시 시켜요. 사진(data URI)은 모델에 보내지 않아요.
+- **바이브 코딩 (새 페이지)**: 말로 만든 새 페이지는 AI가 HTML/JS 앱을 직접 짜요 (`backend/app/code.py`, 앱은 `frontend/src/components/AppFrame*`). 모델 `OPENAI_CODE_MODEL=gpt-5.4-mini`(측정상 가장 빠름, 새 앱 15~25초, 수정 5~10초).
+  - 품질 하한선: `backend/app/skills/*.md` 스킬 문서(core는 항상, 주제 스킬은 요청 단어로 최대 2개) + 앱에 자동으로 들어가는 디자인 키트 CSS(`frontend/src/lib/appkit.ts`, 클래스 목록은 core.md와 맞춰야 해요) + 정적 검사(`lint`) 후 1회 자동 수리 + 실행 중 오류가 나면 1회 자동 수리(횟수 안 씀).
+  - 스킬 추가: `skills/`에 md 파일 하나 (`name`, `keywords` 머리말). 서버 재시작하면 적용돼요.
+  - 안전: 앱은 sandbox iframe/WebView 안에서 돌고 CSP로 네트워크가 전부 막혀 있어요.
+- **리셀러(OpenAI 호환 게이트웨이)**: `OPENAI_BASE_URL=https://apirouter.pleum.ai/v1` + 그 키를 `OPENAI_API_KEY`에. `gpt-5-mini`가 없어서 `OPENAI_EDIT_MODEL=gpt-5.4-mini`. 비우면 OpenAI 직접.
+- **수정 모델**: 작은 모델을 따로 써요. `OPENAI_EDIT_MODEL=gpt-5-mini`(기본), Claude면 `CLAUDE_EDIT_MODEL=claude-haiku-5-5`.
+
+### 비용과 무료 횟수
+
+한 번 고치기 ≈ 입력 2.5천 + 출력 1천 토큰.
+
+| 모델 | 1회 비용 | 비고 |
+| --- | --- | --- |
+| gpt-5-mini ($0.25 / $2 per 1M) | ≈ $0.003 (약 ₩4) | 기본값 |
+| gpt-5.5 ($5 / $30 per 1M) | ≈ $0.04 (약 ₩55) | 수정에 쓰기엔 10배 이상 비쌈 |
+
+| 누구 | 횟수 (`.env`) | 최악의 원가 |
+| --- | --- | --- |
+| 온보딩 체험 (로그인 전) | 설치당 평생 5회 `GUEST_AI_EDITS`, IP당 하루 40회 `GUEST_AI_EDITS_PER_IP_PER_DAY` | 체험자 1명당 ≈ ₩20 |
+| 무료 회원 | 월 30회 `FREE_AI_EDITS_PER_MONTH` (새 페이지 만들기 포함) | 1명당 월 ≈ ₩120 |
+| 구독 회원 | 월 300회 `PLUS_AI_EDITS_PER_MONTH` (공정 사용 한도) | 1명당 월 ≈ ₩6,000 (바이브 코딩 1회 ≈ ₩15~25) |
+
+- 참고: Goodnotes는 무료 월 10 AI 크레딧, 유료 월 525 크레딧, AI Pass(+$10/월) 6,300 크레딧이에요. seyo 무료 30회는 그보다 넉넉하지만 작은 모델이라 원가가 작아요.
+- 바뀐 게 없거나 못 하는 요청이면 횟수를 돌려줘요.
+- 온보딩 체험은 `X-Device-Id`(웹은 localStorage, iPad는 아직 앱 실행 동안만 유지)로 세요. 지우고 다시 받는 걸 막는 건 IP 하루 한도가 맡아요.
 - **온보딩 첫 페이지는 AI를 쓰지 않아요.** 앱의 규칙표(`frontend/src/lib/page.ts`의 `ruleFor`)로 바로 만들어요.
 
 ## 2. 운영 DB
@@ -113,6 +138,6 @@ API 클라이언트는 `frontend/src/lib/api.ts`에 다 만들어 뒀어요. 화
 1. 로그인 모달 → `api.loginApple` / `api.loginKakao`, 토큰은 `expo-secure-store`에 저장.
 2. `login()`이 하던 일 → `api.createPage(draft)` 후 `api.pages()`.
 3. 페이지 수정 → `api.updatePage(id, patch, version)`. 409가 오면 `api.page(id)`로 다시 받아요. 함께 쓰는 페이지는 화면이 열려 있는 동안 10초마다 `api.page(id)`로 새로고침.
-4. 말로 고치기, 새 페이지 → `api.edit`, `api.generate`. 402가 오면 구독 모달.
+4. ~~말로 고치기, 새 페이지 → `api.edit`, `api.generate`~~ 연결 완료. 서버가 안 되면 앱 규칙으로 처리해요. 지금은 로그인할 때 `api.loginDev()`(설치마다 계정 하나)로 서버 세션을 받아요. 1번을 하면 이 줄(`store.tsx`의 `login`)을 Apple/카카오 로그인으로 바꿔요.
 5. 초대 → `api.resetInvite`, `api.kick`, `api.leave`, 초대 링크 진입은 `api.join(token)`.
 6. 홈 첫 진입 구독 모달 → `me.paywallSeen`이 false일 때만 띄우고 `api.paywallSeen()`.

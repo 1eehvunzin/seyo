@@ -34,6 +34,14 @@ def issue_token(user: User) -> str:
     return jwt.encode(payload, s.jwt_secret, algorithm="HS256")
 
 
+def optional_user(
+    cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> "User | None":
+    """The logged-in user, or None before login (onboarding)."""
+    return current_user(cred, db) if cred else None
+
+
 def current_user(
     cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),

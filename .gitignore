@@ -1,2 +1,5 @@
 .DS_Store
 Thumbs.db
+
+# 바이브 코딩 평가 결과물
+backend/evals/out/

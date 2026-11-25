@@ -3,7 +3,8 @@
  * these instead of the store actions (see INTEGRATIONS.md, "앱 연결").
  * Set EXPO_PUBLIC_API_URL (e.g. http://192.168.0.10:8000 for a device on the same Wi-Fi).
  */
-import type { Page, Person } from './page';
+import { fetch as streamFetch } from 'expo/fetch';
+import type { Change, Page, Person } from './page';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 let token: string | null = null;
@@ -20,10 +21,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Install id for the onboarding AI tries (before there is an account). Web keeps it in
+ * localStorage; native keeps it for the session until a storage module is added.
+ */
+let installId: string | null = null;
+export function deviceId(): string {
+  if (installId) return installId;
+  try {
+    installId = globalThis.localStorage?.getItem('seyo.install') ?? null;
+  } catch {}
+  if (!installId) {
+    installId = `i_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+    try {
+      globalThis.localStorage?.setItem('seyo.install', installId);
+    } catch {}
+  }
+  return installId;
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return undefined as T;
@@ -33,14 +53,60 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
+/** 바이브 코딩 stream events (backend/app/code.py). */
+export type AppEvent =
+  | { t: 'code'; d: string }
+  | { t: 'restart' }
+  | { t: 'skills'; names: string[] }
+  | { t: 'fixing'; issues: string[] }
+  | { t: 'checking' }
+  | { t: 'done'; html: string | null; summary: string; left: number }
+  | { t: 'error'; message: string };
+
+/**
+ * Create (no html) or edit (html) a code app. Calls `on` for each event as it streams in;
+ * resolves after the last one. Throws ApiError (402 = out of tries) before the stream starts.
+ */
+async function appStream(body: { prompt: string; html?: string | null; name?: string; error?: string; page?: Page; images?: string[] }, on: (e: AppEvent) => void): Promise<void> {
+  const res = await streamFetch(`${BASE}/ai/app`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}) as { detail?: unknown });
+    throw new ApiError(res.status, typeof data.detail === 'string' ? data.detail : '잠시 후 다시 해 주세요');
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const flush = (all: boolean) => {
+    const lines = buf.split('\n');
+    buf = all ? '' : (lines.pop() ?? '');
+    for (const l of lines) if (l.trim()) on(JSON.parse(l) as AppEvent);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    flush(false);
+  }
+  buf += dec.decode();
+  flush(true);
+}
+
 type Session = { accessToken: string; user: Me };
+/** escalate: the fixed blocks can't do it → rebuild the page as a code app (appStream with `page`) */
+export type EditResult = { page: Page | null; change: Change | null; changed: string[]; message: string; source: string; left: number; escalate?: boolean };
+export type Usage = { limit: number; left: number; period: 'month' | 'trial' };
 const keep = (s: Session) => ((token = s.accessToken), s.user);
 
 export const api = {
   setToken: (t: string | null) => (token = t),
   loginApple: (identityToken: string, name?: string) => call<Session>('POST', '/auth/apple', { identity_token: identityToken, name }).then(keep),
   loginKakao: (accessToken: string) => call<Session>('POST', '/auth/kakao', { access_token: accessToken }).then(keep),
-  loginDev: (name = '나') => call<Session>('POST', '/auth/dev', { name }).then(keep),
+  /** Stand-in until Apple/Kakao keys: one dev account per install (server DEV_LOGIN=true). */
+  loginDev: (name = '나', sub = deviceId()) => call<Session>('POST', '/auth/dev', { name, sub }).then(keep),
   me: () => call<Me>('GET', '/me'),
   paywallSeen: () => call<Me>('POST', '/me/paywall-seen'),
   deleteAccount: () => call<void>('DELETE', '/me'),
@@ -58,8 +124,15 @@ export const api = {
   invite: (t: string) => call<{ pageName: string; owner: Person; memberCount: number }>('GET', `/invites/${t}`),
   join: (t: string) => call<ServerPage>('POST', `/invites/${t}/join`),
 
-  generate: (prompt: string) => call<{ page: Page; steps: { key: string; text: string }[]; followUps: string[]; source: 'claude' | 'rules' }>('POST', '/ai/generate', { prompt }),
-  edit: (page: Page, command: string) => call<{ page: Page | null; change?: string; message?: string; source: string }>('POST', '/ai/edit', { page, command }),
+  /** 말로 새 페이지 (login required). The page comes back without sharing fields; 402 = out of tries. */
+  generate: (prompt: string) => call<{ page: Omit<Page, 'owner' | 'members' | 'inviteToken' | 'createdAt' | 'updatedAt'>; steps: { key: string; text: string }[]; followUps: string[]; source: string; left: number }>('POST', '/ai/generate', { prompt }),
+  /** 말로 고치기. Logged in → monthly quota; before login → onboarding tries (guest). 402 = out of tries. */
+  /** a pasted Pinterest pin link → its image (data URL), attached as a reference */
+  pinImage: (url: string) => call<{ image: string }>('POST', '/ref/pinterest', { url }),
+  edit: (page: Page, command: string) => call<EditResult>('POST', token ? '/ai/edit' : '/ai/guest/edit', { page, command }),
+  appStream,
+  usage: () => call<Usage>('GET', token ? '/ai/usage' : '/ai/guest/usage'),
+  loggedIn: () => token !== null,
 
   verifyPurchase: (signedTransaction: string) => call<Me>('POST', '/billing/apple', { signed_transaction: signedTransaction }),
   registerPush: (expoPushToken: string) => call<void>('POST', '/devices', { expo_push_token: expoPushToken }),

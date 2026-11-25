@@ -5,7 +5,7 @@ import { Person } from '@/lib/page';
 import { C } from '@/theme';
 import Svg, { Path } from 'react-native-svg';
 import { Face } from './Faces';
-import { Btn, Icon, IconButton, Star, T } from './ui';
+import { Btn, Icon, IconButton, Star, T, Wordmark } from './ui';
 
 const ORIENTATIONS = ['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right'] as const;
 
@@ -48,13 +48,17 @@ function Sheet({ visible, onDismiss, width, label, children }: { visible: boolea
 /** Brand marks for the sign-in buttons (Apple logo, Kakao speech bubble). */
 function BrandIcon({ brand }: { brand: 'apple' | 'kakao' }) {
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" accessibilityElementsHidden importantForAccessibility="no">
+    // decorative (the button says the brand): hidden from screen readers on the View, since <Svg>
+    // passes props straight to the DOM on web
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <Svg width={20} height={20} viewBox="0 0 24 24">
       {brand === 'apple' ? (
         <Path fill="#FFFFFF" d="M16.37 1.43c0 1.14-.49 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.21-2.98.8-.94 2.14-1.64 3.25-1.68.03.13.05.28.05.43zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8C4.97 18.38 3.93 15.57 3.93 12.92c0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.61 0 2.89.06 4.37 2.19-.13.09-2.38 1.37-2.38 4.19 0 3.26 2.85 4.42 2.96 4.45z" />
       ) : (
         <Path fill="#191919" d="M12 3C6.48 3 2 6.58 2 11c0 2.83 1.84 5.31 4.6 6.72l-.94 3.44c-.08.3.26.54.52.37l4.12-2.73c.56.07 1.13.11 1.7.11 5.52 0 10-3.58 10-8S17.52 3 12 3z" />
       )}
     </Svg>
+    </View>
   );
 }
 
@@ -106,12 +110,17 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
 
 /* ───────── 08 · 구독 모달 (seyo plus) ───────── */
 
+/**
+ * Prices (2026-11): below Notion Plus (~$10/mo) and around Goodnotes Pro (₩50,500/yr) per year,
+ * at the ₩4,900 student price point. AI cost per make/change ≈ ₩15–25 (gpt-5.4-mini), so the
+ * 300/month fair-use cap (PLUS_AI_EDITS_PER_MONTH) keeps a heavy month near the net price.
+ */
 const PLANS = [
-  { id: 'year', name: '1년', sub: '[n]% 아껴요', price: '[₩00,000] / 년' },
-  { id: 'month', name: '1개월', sub: '매달 결제', price: '[₩0,000] / 월' },
+  { id: 'year', name: '1년', sub: '월 3,250원꼴 · 34% 아껴요', price: '₩39,000 / 년' },
+  { id: 'month', name: '1개월', sub: '매달 결제', price: '₩4,900 / 월' },
 ] as const;
 
-const PERKS = ['페이지를 개수 제한 없이 만들기', '말로 고치기 [무료 한도] → 무제한', '위젯, 모든 분위기 테마'];
+const PERKS = ['페이지를 개수 제한 없이 만들기', '말로 만들고 고치기 월 30회 → 300회', '위젯, 모든 분위기 테마'];
 
 export function PaywallSheet({ visible, onClose, onSubscribe, accent = C.accent }: { visible: boolean; onClose: () => void; onSubscribe: (plan: 'year' | 'month') => void; accent?: string }) {
   const [plan, setPlan] = useState<'year' | 'month'>('year');
@@ -123,15 +132,18 @@ export function PaywallSheet({ visible, onClose, onSubscribe, accent = C.accent 
 
   return (
     <Sheet visible={visible} onDismiss={close} width={480} label="seyo plus">
-      <Star size={200} fill={C.butter} style={{ position: 'absolute', right: -50, top: -60 }} />
+      <Star size={200} fill={C.pinkSoft} style={{ position: 'absolute', right: -50, top: -60 }} />
       <View style={{ position: 'absolute', top: 18, right: 18, zIndex: 2 }}>
         <IconButton name="close" label="닫기" onPress={close} bg={C.fill} iconSize={14} />
       </View>
       <View style={{ paddingTop: 40, paddingHorizontal: 40, paddingBottom: 26, gap: 26 }}>
         <View style={{ gap: 8, alignItems: 'center' }}>
-          <T s={18} ls={-0.04}>
-            seyo.. plus
-          </T>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Wordmark height={18} />
+            <T w={500} s={18} ls={-0.02}>
+              plus
+            </T>
+          </View>
           <T w={600} s={28} lh={1.35} ls={-0.03} center accessibilityRole="header">
             {'말하는 대로,\n끝없이 바꿔요'}
           </T>

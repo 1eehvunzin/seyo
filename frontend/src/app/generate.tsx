@@ -1,12 +1,18 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, ScrollViewInstance, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, ScrollViewInstance, TextInput, TextInputInstance, View } from 'react-native';
 import { PageCanvas } from '@/components/PageCanvas';
 import { PaywallSheet } from '@/components/Sheets';
-import { Btn, Icon, IconButton, Screen, T, useLayout } from '@/components/ui';
+import { Btn, Icon, IconButton, noOutline, Screen, T, useLayout } from '@/components/ui';
 import { WidgetView } from '@/components/WidgetView';
 import { confirmAction } from '@/lib/confirm';
-import { followUp, planFromPrompt, PROMPT_EXAMPLES, TEMPLATES } from '@/lib/generate';
+import { ApiError } from '@/lib/api';
+import { followUpWithAi, planFromPrompt, PROMPT_EXAMPLES, TEMPLATES } from '@/lib/generate';
+import { appPage, Live, liveLabel, repairApp, runApp } from '@/lib/vibecode';
+import { AppFrame } from '@/components/AppFrame';
+import { AttachButton, AttachTray, PinterestChip, RefStatus, refPlaceholder } from '@/components/Attach';
+import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
+import { MakingOverlay, PageSkeleton } from '@/components/Making';
 import { Page } from '@/lib/page';
 import { describeWidget, widgetOptions } from '@/lib/widget';
 import { useStore } from '@/store';
@@ -33,8 +39,22 @@ export default function Generate() {
   const [text, setText] = useState('');
   const [optIdx, setOptIdx] = useState(0);
   const [payOpen, setPayOpen] = useState(false);
+  /** waiting for the model (first page or a follow-up) */
+  const [thinking, setThinking] = useState(false);
+  /** 바이브 코딩 progress: the code so far while the AI writes it */
+  const [live, setLive] = useState<Live | null>(null);
   const seq = useRef(0);
+  /** code versions already sent for repair (one try each, so a bad fix can't loop) */
+  const repaired = useRef(new Set<string>());
+  /** automatic repairs in a row (a fix that breaks again gets one more try, then stop) */
+  const repairChain = useRef(0);
   const scroller = useRef<ScrollViewInstance>(null);
+  /** photos attached to the next message: a design reference unless the words say otherwise */
+  const [photos, setPhotos] = useState<string[]>([]);
+  const input = useRef<TextInputInstance>(null);
+  const addPhotos = useCallback((more: string[]) => setPhotos((p) => [...p, ...more].slice(0, MAX_ATTACH)), [setPhotos]);
+  usePastePhotos(input, addPhotos);
+  const refs = useReferences(addPhotos, MAX_ATTACH - photos.length, input);
 
   const building = steps.length > 0 && progress < steps.length;
   const done = steps.length > 0 && !building;
@@ -47,32 +67,115 @@ export default function Generate() {
 
   useEffect(() => {
     scroller.current?.scrollToEnd({ animated: true });
-  }, [msgs.length, progress]);
+  }, [msgs.length, progress, thinking]);
 
   const say = (role: Msg['role'], t: string) => setMsgs((m) => [...m, { id: seq.current++, role, text: t }]);
 
-  const send = (raw = text) => {
+  const outOfTries = (e: unknown) => {
+    if (!(e instanceof ApiError && e.status === 402)) return false;
+    say('seyo', e.message);
+    if (!plus) setPayOpen(true);
+    return true;
+  };
+
+  /** Templates are fixed shapes: built locally, no AI try used. */
+  const pick = (prompt: string) => {
+    if (page || thinking) return;
+    say('me', prompt);
+    const plan = planFromPrompt(prompt);
+    setPage(plan.page);
+    setSteps(plan.steps);
+    setProgress(0);
+    setFollowUps(plan.followUps);
+    setOptIdx(0);
+  };
+
+  /** A code app is ready: show it as built (body + widget steps), ready to save. */
+  const showApp = (next: Page, summary: string, isNew: boolean) => {
+    setPage(next);
+    setOptIdx(0);
+    if (isNew) {
+      const st = [
+        { key: 'body', text: summary },
+        { key: 'widget', text: '홈 위젯 고르기' },
+      ];
+      setSteps(st);
+      setProgress(st.length);
+      setFollowUps(['색을 더 밝게 바꿔줘', '귀여운 효과 넣어줘']);
+    } else {
+      setSteps((s) => [...s, { key: `f${seq.current}`, text: summary }]);
+      setProgress((p) => p + 1);
+    }
+  };
+
+  const send = async (raw = text) => {
     const t = raw.trim();
-    if (!t || building) return;
+    if (!t || building || thinking) return;
+    const imgs = photos;
     setText('');
-    say('me', t);
-    if (!page) {
-      const plan = planFromPrompt(t);
-      setPage(plan.page);
-      setSteps(plan.steps);
-      setProgress(0);
-      setFollowUps(plan.followUps);
+    setPhotos([]);
+    say('me', imgs.length ? `${t} (사진 ${imgs.length}장)` : t);
+    setThinking(true);
+    repairChain.current = 0;
+    setLive(null);
+    try {
+      // 바이브 코딩: new pages and changes to a code app are written as real code
+      if (!page || page.main.kind === 'app') {
+        const html = page?.main.kind === 'app' ? page.main.html : null;
+        const r = await runApp(t, html, setLive, page?.name, undefined, undefined, imgs);
+        if (!r.html) {
+          say('seyo', r.summary);
+          return;
+        }
+        if (!page) showApp(appPage(r.html, t), r.summary, true);
+        else if (page.main.kind === 'app') showApp({ ...page, main: { ...page.main, html: r.html } }, r.summary, false);
+        setFollowUps((f) => f.filter((x) => x !== t));
+        return;
+      }
+      // template pages (fixed blocks) keep the block editor
+      const r = await followUpWithAi(page, t, setLive, imgs);
+      if (!r.page) {
+        say('seyo', r.message);
+        return;
+      }
+      setPage(r.page);
       setOptIdx(0);
-      return;
+      setSteps((s) => [...s, { key: `f${seq.current}`, text: r.step }]);
+      setProgress((p) => p + 1);
+      setFollowUps((f) => f.filter((x) => x !== t));
+    } catch (e) {
+      if (outOfTries(e)) return;
+      if (!page) {
+        // no server: the local builder still makes a page from the fixed blocks
+        const plan = planFromPrompt(t);
+        setPage(plan.page);
+        setSteps(plan.steps);
+        setProgress(0);
+        setFollowUps(plan.followUps);
+        setOptIdx(0);
+        return;
+      }
+      say('seyo', e instanceof Error && e.message ? e.message : '잠시 문제가 생겼어요. 다시 말해 볼래요?');
+    } finally {
+      setThinking(false);
+      setLive(null);
     }
-    const r = followUp(page, t);
-    if (!r.page) {
-      say('seyo', r.message);
-      return;
-    }
-    setPage(r.page);
-    setSteps((s) => [...s, { key: `f${seq.current}`, text: r.step }]);
-    setFollowUps((f) => f.filter((x) => x !== t));
+  };
+
+  const onAppError = async (error: string) => {
+    if (!page || page.main.kind !== 'app' || thinking || repaired.current.has(page.main.html) || repairChain.current >= 2) return;
+    repairChain.current += 1;
+    const app = page.main;
+    repaired.current.add(app.html);
+    say('seyo', '앱에 오류가 있어서 고치고 있어요.');
+    setThinking(true);
+    const fixed = await repairApp(app.html, error, setLive, page.name);
+    setThinking(false);
+    setLive(null);
+    if (fixed && fixed !== app.html) {
+      setPage((p) => (p && p.main.kind === 'app' ? { ...p, main: { ...p.main, html: fixed } } : p));
+      say('seyo', '오류를 고쳤어요.');
+    } else say('seyo', '오류를 다 못 고쳤어요. 어떤 게 안 되는지 말해 주면 고쳐 볼게요.');
   };
 
   const options = useMemo(() => (page ? widgetOptions(page) : []), [page]);
@@ -164,6 +267,14 @@ export default function Generate() {
                   </T>
                 ),
               )}
+              {thinking && (
+                <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <ActivityIndicator size="small" color={C.accent} />
+                  <T s={14} c={C.muted}>
+                    {liveLabel(live, !!page)}
+                  </T>
+                </View>
+              )}
             </ScrollView>
 
             {done && followUps.length > 0 && (
@@ -173,7 +284,7 @@ export default function Generate() {
                 </T>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {followUps.map((f) => (
-                    <Btn key={f} onPress={() => send(f)} style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }}>
+                    <Btn key={f} disabled={thinking} onPress={() => send(f)} style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }}>
                       <T s={13.5}>{f}</T>
                     </Btn>
                   ))}
@@ -181,26 +292,49 @@ export default function Generate() {
               </View>
             )}
 
+            <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
+            <RefStatus refs={refs} />
+            {!thinking && !building && !text.trim() && !photos.length && <PinterestChip refs={refs} query={page?.name || ''} />}
             <View style={{ height: 56, borderRadius: 28, borderWidth: 1, borderColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 20, paddingRight: 6 }}>
               <TextInput
+                ref={input}
                 accessibilityLabel={page ? '더 말하기' : '만들 페이지 말하기'}
                 value={text}
-                onChangeText={setText}
-                placeholder={page ? '더 바꿀 게 있나요?' : '어떤 페이지를 만들까요?'}
+                onChangeText={(v) => setText(refs.take(v))}
+                placeholder={refPlaceholder(refs, photos.length, page ? '더 바꿀 게 있나요?' : '어떤 페이지를 만들까요?')}
                 placeholderTextColor={C.faint}
                 returnKeyType="send"
                 onSubmitEditing={() => send()}
-                editable={!building}
-                style={{ flex: 1, minWidth: 0, height: 44, fontFamily: F[400], fontSize: 15, color: C.ink }}
+                editable={!building && !thinking}
+                style={{ flex: 1, minWidth: 0, height: 44, fontFamily: F[400], fontSize: 15, color: C.ink, ...noOutline }}
               />
-              <IconButton name="send" label="보내기" onPress={() => send()} bg={C.ink} color={C.white} iconSize={18} />
+              {!thinking && !building && <AttachButton refs={refs} query={text || page?.name || ''} pin={false} />}
+              {thinking ? (
+                <View accessibilityLabel="만드는 중" style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={C.white} size="small" />
+                </View>
+              ) : (
+                <IconButton name="send" label="보내기" onPress={() => send()} bg={C.ink} color={C.white} iconSize={18} />
+              )}
             </View>
           </View>
 
           {/* 미리보기 */}
           <ScrollView accessibilityLabel="미리보기" style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 24, paddingHorizontal: stacked ? 24 : 48, paddingBottom: 40, gap: 32, flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-            {!page ? (
-              <TemplatePicker onPick={(prompt) => send(prompt)} stacked={stacked} />
+            {!page && thinking ? (
+              <View style={{ gap: 16 }}>
+                <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent }} />
+                  <T s={13} c={C.muted}>
+                    {liveLabel(live, false)}
+                  </T>
+                </View>
+                <View style={{ height: Math.max(480, height - 140), borderRadius: 28, backgroundColor: C.white, borderWidth: 1, borderColor: C.hair, overflow: 'hidden' }}>
+                  {live?.html ? <AppFrame html={live.html} state={{}} live /> : <PageSkeleton label={liveLabel(live, false)} />}
+                </View>
+              </View>
+            ) : !page ? (
+              <TemplatePicker onPick={pick} stacked={stacked} />
 
             ) : (
               <>
@@ -230,7 +364,19 @@ export default function Generate() {
                   </T>
                 </View>
 
-                {bodyVisible && <PageCanvas page={page} onChange={setPage} reveal={page.main.kind === 'wrong' ? reveal : undefined} pending={pending} bare={page.main.kind === 'wrong'} scroll={false} />}
+                {page.main.kind === 'app' ? (
+                  <View style={{ height: Math.max(480, height - 220) }}>
+                    {live?.html ? <AppFrame html={live.html} state={{}} live /> : <PageCanvas page={page} onChange={setPage} bare onAppError={onAppError} />}
+                    <MakingOverlay on={thinking && !live?.html} live={live} />
+                  </View>
+                ) : (
+                  bodyVisible && (
+                    <View>
+                      <PageCanvas page={page} onChange={setPage} reveal={page.main.kind === 'wrong' ? reveal : undefined} pending={pending} bare={page.main.kind === 'wrong'} scroll={false} />
+                      <MakingOverlay on={thinking} live={live} />
+                    </View>
+                  )
+                )}
 
                 {widgetVisible && widget && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, padding: 16, borderRadius: 20, backgroundColor: C.fill, opacity: doing === 'widget' ? 0.5 : 1 }}>

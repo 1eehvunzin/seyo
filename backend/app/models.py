@@ -78,6 +78,22 @@ class AiUsage(Base):
     edits: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class GuestUsage(Base):
+    """AI edits during onboarding, before there is an account.
+
+    kind="device": key = the app's install id, day = "" (lifetime count).
+    kind="ip": key = client IP, day = KST date (daily backstop against id resets).
+    kind="create": key = install id — first pages made in onboarding (free, see GUEST_FREE_CREATES).
+    """
+
+    __tablename__ = "guest_usage"
+
+    kind: Mapped[str] = mapped_column(String, primary_key=True)
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    day: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    edits: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Purchase(Base):
     __tablename__ = "purchases"
 

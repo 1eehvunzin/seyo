@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>습관 체크</title>
+<style>
+  :root { --page: #E9F1EC; --star: #93BBAA; }
+  body { background: var(--page); }
+  .page { position: relative; z-index: 1; max-width: 920px; padding: 30px 34px 48px; gap: 22px; }
+  .star { position: fixed; right: -20px; bottom: -24px; width: 120px; height: 120px; z-index: 0; pointer-events: none; }
+  .star path { fill: var(--star); }
+  .top-num { font-size: 56px; font-weight: 200; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .top-label::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
+  .date-in { width: 160px; min-height: 36px; padding: 4px 10px; font-size: 14px; }
+  .reason { align-self: flex-start; padding: 9px 14px; border-radius: 12px; background: rgba(255,255,255,.75); font-size: 13.5px; }
+  .head { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--ink); font-size: 13px; color: var(--sub); }
+  .item { border-bottom: 1px solid rgba(29,29,31,.08); gap: 14px; min-height: 50px; }
+  .item.dim { opacity: .35; }
+  .lead { font-size: 12px; color: var(--sub); min-width: 30px; }
+  .text, .line { border: 0; border-radius: 0; background: transparent; padding: 0; min-height: 44px; flex: 1; }
+  .line { border-bottom: 1px solid rgba(29,29,31,.12); font-weight: 300; }
+  .item.done .text { color: var(--faint); text-decoration: line-through; }
+  .check { width: 22px; min-height: 22px; box-shadow: inset 0 0 0 1.5px rgba(29,29,31,.25); }
+  .check.on, .item.done .check { background: var(--ink); }
+  .chip.rv { min-height: 30px; padding: 0 10px; font-size: 12px; }
+  .chip.rv.on { background: var(--ink); color: #fff; }
+  .add { align-self: flex-start; background: transparent; padding: 0; color: var(--sub); font-weight: 400; font-size: 14px; }
+  .note { padding-top: 12px; }
+  .timer { display: flex; align-items: center; gap: 16px; padding: 18px; border-radius: 18px; background: rgba(255,255,255,.75); }
+  .block { display: block; width: 18px; height: 6px; border-radius: 3px; background: rgba(29,29,31,.1); }
+  .block.on { background: var(--accent); }
+  .habit-row { display: flex; align-items: center; }
+  .days { display: flex; }
+  .days b { width: 40px; text-align: center; font-weight: 400; font-size: 12px; }
+  .days b.now { color: var(--ink); font-weight: 600; }
+  .dot { width: 40px; min-height: 44px; padding: 0; background: transparent; position: relative; }
+  .dot::after { content: ""; position: absolute; left: 9px; top: 11px; width: 22px; height: 22px; border-radius: 50%; background: rgba(29,29,31,.08); }
+  .dot:disabled { opacity: 1; }
+  .dot:disabled::after { background: rgba(29,29,31,.04); }
+  .dot.now::after { box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .dot.on::after { background: #93bbaa; box-shadow: none; }
+  .mood { width: 30px; min-height: 30px; padding: 0; border-radius: 50%; }
+  .mood.on { box-shadow: 0 0 0 2px var(--ink); transform: scale(1.15); }
+  .memo textarea { border: 0; border-bottom: 1px solid rgba(29,29,31,.12); border-radius: 0; background: transparent; padding: 8px 0; min-height: 44px; font-weight: 300; }
+  @media (max-width: 480px) { .page { padding: 22px 18px 40px; } .days b, .dot { width: 32px; } .dot::after { left: 5px; } }
+</style>
+</head>
+<body>
+  <main class="app page">
+    <header class="between" style="align-items:flex-end">
+      <div class="stack" style="gap:4px">
+        <p class="label">today</p>
+        <h1 id="today"></h1>
+      </div>
+      <div class="stack" id="topBox" style="gap:4px;align-items:flex-end"></div>
+    </header>
+    
+
+    <section>
+      <div class="head habit-row"><span style="flex:1">이번 주</span><span id="days" class="days"></span></div>
+      <div class="list" id="list"></div>
+      <button class="add" id="add">+ 습관 추가</button>
+    </section>
+    <section class="memo stack" id="memoBox" style="gap:8px">
+      <p class="label">memo</p>
+      <textarea id="memo" placeholder="여기에 적어요"></textarea>
+    </section>
+  </main>
+  <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 8.7l7.1-.6z"/></svg>
+<script>
+const KIND = "habits";
+const S = Object.assign({"memo":"","top":{"kind":"streak","label":"이번 주"},"dim":true,"habits":[{"id":"h1","name":"물 2L","week":[true,true,false,false,false,false,false]},{"id":"h2","name":"30분 독서","week":[true,false,true,false,false,false,false]}],"remind":true}, seyo.state);
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function save() { seyo.save(S); }
+
+function dayKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function ddayText(date) {
+  const p = String(date).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!p) return 'D-?';
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const n = Math.round((new Date(+p[1], p[2] - 1, +p[3]) - t) / 864e5);
+  return n > 0 ? 'D-' + n : n === 0 ? 'D-DAY' : 'D+' + -n;
+}
+
+function renderTop() {
+  const now = new Date();
+  $('today').textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (!S.top) { $('topBox').innerHTML = ''; return; }
+  if (S.top.kind === 'dday') {
+    $('topBox').innerHTML = `<p class="label top-label">${esc(S.top.label)}</p><p class="top-num">${ddayText(S.top.date)}</p><input class="date-in" id="topDate" value="${esc(S.top.date)}" aria-label="날짜">`;
+    $('topDate').onchange = e => { S.top.date = e.target.value; save(); render(); };
+  } else {
+    // streak: habits → checks so far this week, log → whether today is filled
+    let value = '';
+    if (S.habits) {
+      const upto = (now.getDay() + 6) % 7 + 1;
+      value = S.habits.reduce((n, h) => n + h.week.slice(0, upto).filter(Boolean).length, 0) + '/' + S.habits.length * upto;
+    } else if (S.values) value = (Object.values(S.values).some(Boolean) ? 1 : 0) + '일';
+    $('topBox').innerHTML = `<p class="label top-label">${esc(S.top.label)}</p><p class="top-num">${value}</p>`;
+  }
+}
+
+const WEEK = ['월', '화', '수', '목', '금', '토', '일'];
+const todayIdx = (new Date().getDay() + 6) % 7;
+
+function renderMain() {
+  $('days').innerHTML = WEEK.map((d, i) => `<b class="${i === todayIdx ? 'now' : ''}">${d}</b>`).join('');
+  $('list').innerHTML = S.habits.map(h => `
+    <div class="item habit-row" data-id="${h.id}">
+      <input class="text" data-act="name" value="${esc(h.name)}" placeholder="습관 이름">
+      <span class="days">${h.week.map((on, i) => `<button class="dot${on ? ' on' : ''}${i === todayIdx ? ' now' : ''}" data-act="day" data-i="${i}" ${i > todayIdx ? 'disabled' : ''} aria-label="${WEEK[i]}요일"></button>`).join('')}</span>
+    </div>`).join('');
+  const done = S.habits.reduce((n, h) => n + h.week.slice(0, todayIdx + 1).filter(Boolean).length, 0);
+  seyo.widget('이번 주', done + '/' + S.habits.length * (todayIdx + 1));
+}
+
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('[data-act="day"]');
+  if (!b) return;
+  const h = S.habits.find(x => x.id === b.closest('.item').dataset.id);
+  h.week[+b.dataset.i] = !h.week[+b.dataset.i];
+  save(); render();
+});
+$('list').addEventListener('input', e => {
+  if (e.target.dataset.act !== 'name') return;
+  S.habits.find(x => x.id === e.target.closest('.item').dataset.id).name = e.target.value;
+  save();
+});
+$('add').onclick = () => {
+  S.habits.push({ id: 'h' + Date.now(), name: '', week: [false, false, false, false, false, false, false] });
+  save(); render();
+};
+
+function render() {
+  renderTop();
+  renderMain();
+  $('memoBox').style.display = S.memo === null ? 'none' : '';
+}
+
+$('memo').value = S.memo || '';
+$('memo').addEventListener('input', e => { S.memo = e.target.value; save(); });
+render();
+</script>
+</body>
+</html>

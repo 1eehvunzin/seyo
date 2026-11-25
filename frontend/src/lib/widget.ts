@@ -19,6 +19,11 @@ const todayStart = () => addDays(new Date(), 0).getTime();
 export function bigNumber(p: Page): BigNumber | null {
   const m = p.main;
   if (p.top?.kind === 'dday') return { label: p.top.label, value: dday(parseLooseDate(p.top.date)) };
+  // code apps report their own number with seyo.widget(label, value)
+  if (m.kind === 'app') {
+    const w = m.state.__widget as { label?: unknown; value?: unknown } | undefined;
+    return w && w.value != null ? { label: String(w.label ?? ''), value: String(w.value) } : null;
+  }
   if (m.kind === 'wrong') return { label: '다시 풀 문제', value: String(m.entries.filter((e) => e.reviewAt <= todayStart()).length), suffix: '개 · 오늘' };
   if (m.kind === 'habits') {
     const upto = weekdayIndex() + 1;
@@ -102,6 +107,7 @@ export function defaultWidget(p: Page): Widget {
   if (m.kind === 'habits') return { size: 'small', templates: ['dots'] };
   if (m.kind === 'timetable') return { size: 'small', templates: ['nextItem'] };
   if (m.kind === 'wrong' || m.kind === 'log') return { size: 'small', templates: ['bigNumber'] };
+  if (m.kind === 'app') return { size: 'small', templates: ['bigNumber'] }; // falls back until the app calls seyo.widget
   return { size: 'small', templates: ['fallback'] };
 }
 

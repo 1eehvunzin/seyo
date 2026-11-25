@@ -6,6 +6,7 @@ import { addDays, dday, parseLooseDate, shortEn, WEEK_KO, weekdayIndex } from '@
 import { Change, LogField, Main, Page, Todo, uid } from '@/lib/page';
 import { nextClass, TIMETABLE_DAYS, TIMETABLE_PERIODS } from '@/lib/timetable';
 import { C, F, THEMES, TIMETABLE } from '@/theme';
+import { AppFrame } from './AppFrame';
 import { Btn, Chip, Icon, IconButton, Star, T } from './ui';
 
 type Props = {
@@ -20,6 +21,8 @@ type Props = {
   scroll?: boolean;
   /** no themed card around it (Generate preview sits on white) */
   bare?: boolean;
+  /** a code app threw at runtime */
+  onAppError?: (error: string) => void;
 };
 
 const HAIR = C.rowLine;
@@ -34,13 +37,25 @@ function Hl({ on, children, style, inset = 6, radius = 14, accent }: { on: boole
   );
 }
 
-export function PageCanvas({ page, onChange, highlight = null, accent = C.accent, reveal, pending, scroll = true, bare }: Props) {
+export function PageCanvas({ page, onChange, highlight = null, accent = C.accent, reveal, pending, scroll = true, bare, onAppError }: Props) {
   const theme = THEMES[page.theme];
   const [w, setW] = useState(0);
   const narrow = w > 0 && w < 720;
   const today = new Date();
   const set = (patch: Partial<Page>) => onChange?.({ ...page, ...patch });
   const setMain = (main: Main) => set({ main });
+
+  // 바이브 코딩 app: the AI-written code fills the card; it keeps its own data in main.state
+  if (page.main.kind === 'app') {
+    const app = page.main;
+    return (
+      <Hl on={highlight === 'main' || highlight === 'theme'} accent={accent} inset={4} radius={31} style={{ flex: 1 }}>
+        <View style={{ flex: 1, minHeight: 480, borderRadius: 28, backgroundColor: bare ? C.white : theme.card, overflow: 'hidden' }}>
+          <AppFrame key={page.id} html={app.html} state={app.state} onSave={onChange ? (state) => set({ main: { ...app, state } }) : undefined} onError={onAppError} />
+        </View>
+      </Hl>
+    );
+  }
 
   const body = (
     <View style={{ gap: 22 }}>

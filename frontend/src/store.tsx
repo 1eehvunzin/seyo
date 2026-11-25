@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import { api } from './lib/api';
 import { Answers, Page, PEOPLE, samplePages } from './lib/page';
 
 type Store = {
@@ -67,6 +68,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     (_provider: 'apple' | 'kakao') => {
       setLoggedIn(true);
+      // Server session for AI (monthly quota instead of the onboarding trial). Until the Apple/Kakao
+      // keys are in, a dev account per install stands in; offline the app keeps working on rules.
+      api.loginDev().catch(() => {});
       setPages((list) => {
         if (list.length) return list;
         const rest = samplePages();
@@ -79,6 +83,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    api.setToken(null);
     setLoggedIn(false);
     setPages([]);
     setDraft(null);

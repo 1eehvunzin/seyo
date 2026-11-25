@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
 import { AskBar, Toast, usePageEditor } from '@/components/AskBar';
 import { FaceStack } from '@/components/Faces';
+import { MakingOverlay } from '@/components/Making';
 import { PageCanvas } from '@/components/PageCanvas';
 import { ShareSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
@@ -22,6 +23,8 @@ export default function PageScreen() {
   const [editing, setEditing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [text, setText] = useState('');
+  /** photos attached to the next request */
+  const [photos, setPhotos] = useState<string[]>([]);
 
   if (!loggedIn) return <Redirect href="/" />;
   if (!stored) return <Redirect href="/home" />;
@@ -30,8 +33,11 @@ export default function PageScreen() {
   const isOwner = page.owner === null;
   const inviteUrl = Linking.createURL(`/join/${page.inviteToken}`);
 
-  const send = () => {
-    if (ed.say(text)) setText('');
+  const send = async () => {
+    if (await ed.say(text, photos)) {
+      setText('');
+      setPhotos([]);
+    }
   };
 
   const leave = () =>
@@ -93,13 +99,35 @@ export default function PageScreen() {
             </View>
           </View>
 
-          <PageCanvas page={page} onChange={ed.update} highlight={ed.change} />
+          <View style={{ flex: 1 }}>
+            <PageCanvas page={page} onChange={ed.update} highlight={ed.change} onAppError={isOwner ? ed.repair : undefined} />
+            <MakingOverlay on={ed.busy} live={ed.live} />
+          </View>
           {/* floats over the page so the header never reflows */}
           <View pointerEvents="box-none" style={{ position: 'absolute', top: 68, right: appGutter + 16 }}>
             <Toast toast={ed.toast} onUndo={ed.undo} />
           </View>
 
-          {editing && isOwner && <AskBar value={text} onChangeText={setText} onSend={send} placeholder="이 페이지를 어떻게 바꿀까요? 예: 메모 칸 넣어줘" autoFocus />}
+          {editing && isOwner && (
+            <View style={{ gap: 8 }}>
+              <AskBar
+                photos={photos}
+                onPhotos={setPhotos}
+                value={text}
+                onChangeText={setText}
+                onSend={send}
+                busy={ed.busy}
+                disabled={ed.limited}
+                placeholder={ed.limited ? '이번 달 바꿀 수 있는 만큼 다 썼어요' : page.main.kind === 'app' ? '무엇이든 말해 보세요. 예: 버튼을 더 크게, 기록 지우기 버튼 넣어줘' : '무엇이든 말해 보세요. 예: 국어 비문학 3지문 할 일에 넣어줘'}
+                autoFocus
+              />
+              {ed.left !== null && ed.left <= 5 && (
+                <T s={12.5} c={C.sub} style={{ textAlign: 'center' }}>
+                  {ed.limited ? '다음 달 1일에 다시 채워져요' : `이번 달 ${ed.left}번 더 바꿀 수 있어요`}
+                </T>
+              )}
+            </View>
+          )}
         </View>
       </KeyboardAvoidingView>
 

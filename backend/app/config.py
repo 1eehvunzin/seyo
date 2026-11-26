@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Dev shortcuts. Must be false in prod.
     dev_login: bool = True
     dev_billing: bool = True
+    # 테스트 구독 in prod, until real payments are in: the 구독 button turns on Plus without paying for
+    # accounts made before TEST_PLUS_BEFORE (ISO time; the team's own accounts) and for the account
+    # ids in TEST_PLUS_USERS (comma-separated, e.g. "usr_ab12,usr_cd34"). Both empty = nobody.
+    test_plus_before: str = ""
+    test_plus_users: str = ""
 
     # Page generation and "말로 고치기". auto = OpenAI if its key is set, else Claude, else rules.
     ai_provider: str = "auto"  # auto | openai | anthropic | rules

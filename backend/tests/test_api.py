@@ -102,6 +102,33 @@ def test_free_page_limit_and_plus(client):
     assert client.post("/pages", json={"page": PAGE}, headers=h).status_code == 201
 
 
+def test_test_plus_only_listed_accounts_when_dev_billing_off(client, monkeypatch):
+    from app.config import get_settings
+
+    tester = login(client, "t", "테스터")
+    other = login(client, "o", "남")
+    tester_id = client.get("/me", headers=tester).json()["id"]
+    monkeypatch.setattr(get_settings(), "dev_billing", False)
+    monkeypatch.setattr(get_settings(), "test_plus_users", f" {tester_id} , usr_other")
+    assert client.post("/billing/dev-plus", headers=other).status_code == 404
+    assert client.get("/me", headers=other).json()["plus"] is False
+    assert client.post("/billing/dev-plus", headers=tester).json()["plus"] is True
+
+
+def test_test_plus_for_accounts_made_before_cutoff(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.config import get_settings
+
+    old = login(client, "old", "예전")
+    monkeypatch.setattr(get_settings(), "dev_billing", False)
+    monkeypatch.setattr(get_settings(), "test_plus_before", (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat())
+    assert client.post("/billing/dev-plus", headers=old).json()["plus"] is True
+    monkeypatch.setattr(get_settings(), "test_plus_before", (datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
+    new = login(client, "new", "새로")
+    assert client.post("/billing/dev-plus", headers=new).status_code == 404
+
+
 def test_paywall_seen_once(client):
     h = login(client, "a", "현진")
     assert client.get("/me", headers=h).json()["paywallSeen"] is False

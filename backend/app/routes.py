@@ -606,10 +606,22 @@ def billing_apple(body: AppleTransaction, user: User = Depends(current_user), db
     return _me_out(user)
 
 
-@router.post("/billing/dev-plus", tags=["billing"], include_in_schema=get_settings().dev_billing)
+def _test_account(user: User) -> bool:
+    """Made before TEST_PLUS_BEFORE, or listed in TEST_PLUS_USERS."""
+    s = get_settings()
+    if user.id in {u.strip() for u in s.test_plus_users.split(",") if u.strip()}:
+        return True
+    if not s.test_plus_before or not user.created_at:
+        return False
+    cutoff = datetime.fromisoformat(s.test_plus_before)
+    made = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
+    return made < (cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc))
+
+
+@router.post("/billing/dev-plus", tags=["billing"], include_in_schema=False)
 def billing_dev(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Dev only: 구독 시작하기 without the App Store."""
-    if not get_settings().dev_billing:
+    """구독 시작하기 without the App Store: anyone on a dev server; in prod, the team's test accounts."""
+    if not get_settings().dev_billing and not _test_account(user):
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     user.plus_until = now() + timedelta(days=365)
     db.commit()

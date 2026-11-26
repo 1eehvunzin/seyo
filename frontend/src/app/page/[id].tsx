@@ -7,7 +7,7 @@ import { MakingOverlay } from '@/components/Making';
 import { PageCanvas } from '@/components/PageCanvas';
 import { DeviceSheet, LoginSheet, PaywallSheet, ShareSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
-import { confirmAction, notice } from '@/lib/confirm';
+import { confirmAction } from '@/lib/confirm';
 import { api } from '@/lib/api';
 import { InkCmd } from '@/lib/appdoc';
 import { pickPhotos } from '@/lib/attach';
@@ -233,10 +233,7 @@ export default function PageScreen() {
         onClose={() => setPayClosed(true)}
         onSubscribe={async () => {
           setPayClosed(true);
-          if (await subscribe()) {
-            ed.recheck();
-            notice('seyo plus를 시작했어요', '테스트 구독이에요. 결제 없이 plus 기능을 써 볼 수 있어요.');
-          } else notice('구독은 아직 열 수 없어요', '테스트 구독이 꺼져 있는 서버예요. 잠시 뒤 다시 해 주세요.');
+          if (await subscribe()) ed.recheck();
         }}
       />
 

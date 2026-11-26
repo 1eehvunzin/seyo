@@ -5,7 +5,7 @@ import { PageCanvas } from '@/components/PageCanvas';
 import { PaywallSheet } from '@/components/Sheets';
 import { Btn, Icon, IconButton, noOutline, Screen, T, useLayout } from '@/components/ui';
 import { WidgetView } from '@/components/WidgetView';
-import { confirmAction, notice } from '@/lib/confirm';
+import { confirmAction } from '@/lib/confirm';
 import { ApiError } from '@/lib/api';
 import { followUpWithAi, planFromPrompt, TEMPLATES } from '@/lib/generate';
 import { appPage, Live, liveLabel, repairApp, runApp } from '@/lib/vibecode';
@@ -416,8 +416,7 @@ export default function Generate() {
         onClose={() => setPayOpen(false)}
         onSubscribe={async () => {
           setPayOpen(false);
-          if (await subscribe()) notice('seyo plus를 시작했어요', '테스트 구독이에요. 결제 없이 plus 기능을 써 볼 수 있어요.');
-          else notice('구독은 아직 열 수 없어요', '테스트 구독이 꺼져 있는 서버예요. 잠시 뒤 다시 해 주세요.');
+          await subscribe();
         }}
       />
     </Screen>

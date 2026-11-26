@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { notice } from '@/lib/confirm';
 import { api, ApiError, Me, ServerPage } from './lib/api';
 import { Answers, Page } from './lib/page';
 import { loadToken, saveToken } from './lib/session';
@@ -48,7 +49,7 @@ type Store = {
   login: (provider: 'apple' | 'kakao', opts?: { draft?: Page | null }) => void;
   logout: () => void;
   plus: boolean;
-  /** 구독 시작하기 (no payment yet: the server's test switch turns plus on). Resolves true when plus is on. */
+  /** 구독 시작하기 (no payment yet: the server turns plus on for test accounts) and say how it went. Resolves true when plus is on. */
   subscribe: () => Promise<boolean>;
   /** Invite link opened before login: joined right after login. */
   pendingInvite: string | null;
@@ -264,11 +265,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const m = await api.devPlus();
       setMe(m);
+      notice('seyo plus를 시작했어요', '테스트 구독이에요. 결제 없이 plus 기능을 써 볼 수 있어요.');
       return m.plus;
     } catch {
+      // only accounts on the server's test list (TEST_PLUS_USERS) can, until payments are in
+      notice('구독은 곧 열려요', `결제가 준비되는 대로 알려 드릴게요.${me ? `
+
+(테스트 계정 등록용 번호: ${me.id})` : ''}`);
       return false;
     }
-  }, []);
+  }, [me]);
 
   const joinInvite = useCallback(async (t: string) => {
     const sp = await api.join(t);

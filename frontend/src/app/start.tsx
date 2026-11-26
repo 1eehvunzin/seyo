@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, TextInput, TextInputInstance, View } from 'react-native';
 import { AppFrame } from '@/components/AppFrame';
 import { AttachButton, AttachTray, RefStatus, refPlaceholder } from '@/components/Attach';
+import { DevicePick } from '@/components/DevicePick';
+import { Device, deviceOf } from '@/lib/page';
 import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
 import { PageSkeleton } from '@/components/Making';
 import { Btn, IconButton, noOutline, Screen, Star, T, useLayout } from '@/components/ui';
@@ -27,13 +29,15 @@ export default function Start() {
   const { setDraft } = useStore();
   const { gutter, width, height } = useLayout();
   const [text, setText] = useState('');
+  /** the screen the first page is for: this device's kind unless the user picks the other */
+  const [device, setDevice] = useState<Device>(() => deviceOf(width));
   const [asked, setAsked] = useState<string | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** why the last try didn't make a page: out of tries → log in; AI down → retry or a plain page */
   const [stuck, setStuck] = useState<'limit' | 'offline' | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
-  const { login } = useStore();
+  const { login, enterGuest } = useStore();
   /** photos attached to the ask: a design reference unless the words say otherwise */
   const [photos, setPhotos] = useState<string[]>([]);
   const input = useRef<TextInputInstance>(null);
@@ -49,9 +53,9 @@ export default function Start() {
     setError(null);
     setLive(null);
     try {
-      const r = await runApp(t, null, setLive, undefined, undefined, undefined, photos);
+      const r = await runApp(t, null, setLive, undefined, undefined, undefined, photos, device);
       if (r.html) {
-        setDraft(appPage(r.html, t));
+        setDraft(appPage(r.html, t, device));
         router.replace('/demo');
         return;
       }
@@ -121,6 +125,7 @@ export default function Start() {
             </View>
 
             <View style={{ gap: 14 }}>
+              <DevicePick value={device} onChange={setDevice} />
               <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
               <RefStatus refs={refs} />
               <View style={{ minHeight: 64, borderRadius: 32, borderWidth: 1.5, borderColor: text ? C.ink : C.line, backgroundColor: C.white, flexDirection: 'row', alignItems: 'center', paddingLeft: 24, paddingRight: 8, gap: 6, shadowColor: C.ink, shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }}>
@@ -190,6 +195,11 @@ export default function Start() {
         onDismiss={() => setLoginOpen(false)}
         onLogin={(p) => {
           login(p);
+          setLoginOpen(false);
+          router.replace('/home');
+        }}
+        onSkip={() => {
+          enterGuest(null);
           setLoginOpen(false);
           router.replace('/home');
         }}

@@ -5,20 +5,22 @@ import { AskBar, Toast, usePageEditor } from '@/components/AskBar';
 import { FaceStack } from '@/components/Faces';
 import { MakingOverlay } from '@/components/Making';
 import { PageCanvas } from '@/components/PageCanvas';
-import { PaywallSheet, ShareSheet } from '@/components/Sheets';
+import { DeviceSheet, LoginSheet, PaywallSheet, ShareSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
 import { confirmAction, notice } from '@/lib/confirm';
 import { api } from '@/lib/api';
-import { Person } from '@/lib/page';
+import { deviceOf, Person } from '@/lib/page';
 import { useStore } from '@/store';
 import { C, F } from '@/theme';
 
 /** 09 · 페이지 열기 — 방장: 수정(말로 바꾸기) · 이름 바꾸기 · 초대 / 멤버: 쓰기 · 나가기 */
 export default function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getPage, patchPage, removePage, loggedIn, ready, me, refreshPage, plus } = useStore();
+  const { getPage, patchPage, removePage, loggedIn, guest, login, ready, me, refreshPage, plus } = useStore();
   const stored = getPage(id);
-  const { appGutter, compact } = useLayout();
+  const { appGutter, compact, width } = useLayout();
+  /** this page was made for the other kind of screen and the user hasn't said to keep it */
+  const [deviceOk, setDeviceOk] = useState(false);
   const ed = usePageEditor(stored ?? null, ({ members: _m, inviteToken: _t, owner: _o, ...rest }) => patchPage(rest.id, rest));
   const [editing, setEditing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -36,7 +38,7 @@ export default function PageScreen() {
   }, [sharedId, refreshPage]);
 
   if (!ready) return null;
-  if (!loggedIn) return <Redirect href="/" />;
+  if (!loggedIn && !guest) return <Redirect href="/" />;
   if (!stored) return <Redirect href="/home" />;
   const ME: Person = me ? { id: me.id, name: me.name, initial: me.initial, bg: me.bg } : { id: 'me', name: '나', initial: '나', bg: C.pink };
   // the editor holds the working copy; the store copy is the source when nothing was edited here yet
@@ -84,10 +86,13 @@ export default function PageScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {isOwner ? (
                 <>
-                  <Btn accessibilityLabel={`함께 쓰는 사람 ${page.members.length + 1}명, 초대하기`} onPress={() => setShareOpen(true)} style={{ height: 36, paddingLeft: 6, paddingRight: 12, borderRadius: 18, backgroundColor: C.fill, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <FaceStack people={[ME, ...page.members]} size={26} ring={C.fill} />
-                    <T s={13.5}>초대</T>
-                  </Btn>
+                  {/* without an account a page stays on this device: no sharing */}
+                  {loggedIn && (
+                    <Btn accessibilityLabel={`함께 쓰는 사람 ${page.members.length + 1}명, 초대하기`} onPress={() => setShareOpen(true)} style={{ height: 36, paddingLeft: 6, paddingRight: 12, borderRadius: 18, backgroundColor: C.fill, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <FaceStack people={[ME, ...page.members]} size={26} ring={C.fill} />
+                      <T s={13.5}>초대</T>
+                    </Btn>
+                  )}
                   <Btn
                     accessibilityState={{ selected: editing }}
                     onPress={() => setEditing((e) => !e)}
@@ -153,8 +158,25 @@ export default function PageScreen() {
         </View>
       </KeyboardAvoidingView>
 
+      {page.main.kind === 'app' && (
+        <DeviceSheet
+          visible={!deviceOk && !ed.busy && (page.device ?? 'tablet') !== deviceOf(width)}
+          made={page.device ?? 'tablet'}
+          onKeep={() => setDeviceOk(true)}
+        />
+      )}
+      <LoginSheet
+        visible={guest && ed.limited && !payClosed}
+        onDismiss={() => setPayClosed(true)}
+        title="로그인하면 무료로 계속 바꿀 수 있어요"
+        sub="이 기기에서 만든 페이지는 계정으로 그대로 옮겨져요."
+        onLogin={(p) => {
+          login(p);
+          setPayClosed(true);
+        }}
+      />
       <PaywallSheet
-        visible={ed.limited && !plus && !payClosed}
+        visible={loggedIn && ed.limited && !plus && !payClosed}
         onClose={() => setPayClosed(true)}
         onSubscribe={() => {
           setPayClosed(true);

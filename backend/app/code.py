@@ -556,7 +556,18 @@ def _retry_note(failed: list[str], partial: bool) -> str:
     return f"\n\n(지난번 답의 아래 블록은 형식이 깨졌거나 SEARCH가 파일에 그대로 없어서 적용하지 못했어요. 지금 파일에서 글자 그대로 복사한 짧은 SEARCH로 블록 전체를 다시 써 주세요.)\n{shown}"
 
 
-async def run(prompt: str, html: str | None, name: str | None = None, page: dict | None = None, images: list[str] | None = None, plus: bool = False) -> AsyncIterator[str]:
+def _device_note(device: str | None) -> str:
+    """The screen the user picked for this page."""
+    if device == "phone":
+        return ("\n\n(이 페이지는 휴대폰 세로 화면(폭 360~430px)에서 써요. 한 열로 위에서 아래로 쌓고, 7칸 표·달력은 칸을 작게 하거나 "
+                "가로로 넘기게, 누르는 곳은 44px 이상, 가로 스크롤이 생기지 않게. 아이패드용 여러 열 배치는 쓰지 않는다.)")
+    if device == "tablet":
+        return ("\n\n(이 페이지는 아이패드(폭 768~1366px, 가로·세로)에서 손가락과 펜슬로 써요. 넓은 화면을 2~3열로 활용하고, "
+                "세로 화면(폭 768~834px)에서도 깨지지 않게.)")
+    return ""
+
+
+async def run(prompt: str, html: str | None, name: str | None = None, page: dict | None = None, images: list[str] | None = None, plus: bool = False, device: str | None = None) -> AsyncIterator[str]:
     """Yields NDJSON events. The last one is done or error; done carries the full html and the
     tokens the run spent. `page` (with no html): rebuild that fixed-block page as a code app.
     `images`: photos attached to the request (a design reference unless the request says how to
@@ -568,7 +579,7 @@ async def run(prompt: str, html: str | None, name: str | None = None, page: dict
     if html:
         html, kept = stash_images(html)
     place = bool(images) and wants_photo_in_page(prompt)
-    prompt = prompt + _photo_note(images, place, bool(images) and wants_photo_layout(prompt))
+    prompt = prompt + _photo_note(images, place, bool(images) and wants_photo_layout(prompt)) + _device_note(device)
     placed = images if place else []  # only a request that asks for it gets the photo itself
     try:
         title = re.search(r"<title>(.*?)</title>", html or "", re.I | re.S)

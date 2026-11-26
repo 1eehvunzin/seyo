@@ -59,7 +59,14 @@ export type Widget = { size: 'small' | 'large'; templates: WidgetTpl[] };
 
 export type Person = { id: string; name: string; initial: string; bg: string };
 
+/** the screen a page is made for (the user picks it when making the page) */
+export type Device = 'phone' | 'tablet';
+/** phones (and very narrow windows) vs iPad / desktop */
+export const deviceOf = (width: number): Device => (width < 700 ? 'phone' : 'tablet');
+
 export type Page = {
+  /** made for a phone or an iPad; older pages have none (treated as iPad) */
+  device?: Device;
   widget: Widget;
   /** null = I made it (방장). Otherwise I was invited (멤버). */
   owner: Person | null;

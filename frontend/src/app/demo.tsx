@@ -12,7 +12,7 @@ import { C } from '@/theme';
 
 /** 07 · 튜토리얼 → 저장하고 시작하기 → 로그인 모달 */
 export default function Demo() {
-  const { draft, setDraft, login } = useStore();
+  const { draft, setDraft, login, enterGuest } = useStore();
   const { appGutter } = useLayout();
   const ed = usePageEditor(draft, setDraft);
   const [text, setText] = useState('');
@@ -104,6 +104,11 @@ export default function Demo() {
         onDismiss={() => setLoginOpen(false)}
         onLogin={(p) => {
           login(p);
+          setLoginOpen(false);
+          router.replace('/home');
+        }}
+        onSkip={() => {
+          enterGuest(page);
           setLoginOpen(false);
           router.replace('/home');
         }}

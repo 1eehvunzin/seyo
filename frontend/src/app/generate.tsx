@@ -11,9 +11,10 @@ import { followUpWithAi, planFromPrompt, PROMPT_EXAMPLES, TEMPLATES } from '@/li
 import { appPage, Live, liveLabel, repairApp, runApp } from '@/lib/vibecode';
 import { AppFrame } from '@/components/AppFrame';
 import { AttachButton, AttachTray, PinterestChip, RefStatus, refPlaceholder } from '@/components/Attach';
+import { DevicePick } from '@/components/DevicePick';
 import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
 import { MakingOverlay, PageSkeleton } from '@/components/Making';
-import { Page } from '@/lib/page';
+import { Device, deviceOf, Page } from '@/lib/page';
 import { describeWidget, widgetOptions } from '@/lib/widget';
 import { useStore } from '@/store';
 import { C, F } from '@/theme';
@@ -37,6 +38,8 @@ export default function Generate() {
   const [page, setPage] = useState<Page | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
   const [text, setText] = useState('');
+  /** the screen the new page is for: this device's kind unless the user picks the other */
+  const [device, setDevice] = useState<Device>(() => deviceOf(width));
   const [optIdx, setOptIdx] = useState(0);
   const [payOpen, setPayOpen] = useState(false);
   /** waiting for the model (first page or a follow-up) */
@@ -122,12 +125,12 @@ export default function Generate() {
       // 바이브 코딩: new pages and changes to a code app are written as real code
       if (!page || page.main.kind === 'app') {
         const html = page?.main.kind === 'app' ? page.main.html : null;
-        const r = await runApp(t, html, setLive, page?.name, undefined, undefined, imgs);
+        const r = await runApp(t, html, setLive, page?.name, undefined, undefined, imgs, page?.device ?? device);
         if (!r.html) {
           say('seyo', r.summary);
           return;
         }
-        if (!page) showApp(appPage(r.html, t), r.summary, true);
+        if (!page) showApp(appPage(r.html, t, device), r.summary, true);
         else if (page.main.kind === 'app') showApp({ ...page, main: { ...page.main, html: r.html } }, r.summary, false);
         setFollowUps((f) => f.filter((x) => x !== t));
         return;
@@ -292,6 +295,7 @@ export default function Generate() {
               </View>
             )}
 
+            {!page && <DevicePick value={device} onChange={setDevice} />}
             <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
             <RefStatus refs={refs} />
             {!thinking && !building && !text.trim() && !photos.length && <PinterestChip refs={refs} query={page?.name || ''} />}

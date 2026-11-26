@@ -7,7 +7,7 @@ import { C } from '@/theme';
 
 /** 01 · 스플래시 */
 export default function Splash() {
-  const { loggedIn, ready } = useStore();
+  const { loggedIn, guest, ready } = useStore();
   const { width, height } = useLayout();
   const fade = useState(() => new Animated.Value(0))[0];
   const done = useRef(false);
@@ -24,8 +24,8 @@ export default function Splash() {
   useEffect(() => {
     if (!shown || !ready || done.current) return;
     done.current = true;
-    router.replace(loggedIn ? '/home' : '/start');
-  }, [shown, ready, loggedIn]);
+    router.replace(loggedIn || guest ? '/home' : '/start');
+  }, [shown, ready, loggedIn, guest]);
   const go = () => setShown(true);
 
   const star = Math.min(460, Math.min(width, height) * 0.55);

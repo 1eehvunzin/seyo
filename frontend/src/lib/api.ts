@@ -70,7 +70,7 @@ export type AppEvent =
  * Create (no html) or edit (html) a code app. Calls `on` for each event as it streams in;
  * resolves after the last one. Throws ApiError (402 = out of tries) before the stream starts.
  */
-async function appStream(body: { prompt: string; html?: string | null; name?: string; error?: string; page?: Page; images?: string[] }, on: (e: AppEvent) => void): Promise<void> {
+async function appStream(body: { prompt: string; html?: string | null; name?: string; error?: string; page?: Page; images?: string[]; device?: 'phone' | 'tablet' }, on: (e: AppEvent) => void): Promise<void> {
   const res = await streamFetch(`${BASE}/ai/app`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -111,6 +111,7 @@ const keep = (s: Session) => {
 
 export const api = {
   setToken: (t: string | null) => (token = t),
+  hasToken: () => !!token,
   loginApple: (identityToken: string, name?: string, nonce?: string) => call<Session>('POST', '/auth/apple', { identity_token: identityToken, name, nonce }).then(keep),
   loginKakao: (accessToken: string) => call<Session>('POST', '/auth/kakao', { access_token: accessToken }).then(keep),
   /** web: the code Kakao sent back to /auth/kakao */

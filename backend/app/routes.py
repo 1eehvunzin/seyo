@@ -421,6 +421,8 @@ class AppIn(BaseModel):
     page: dict[str, Any] | None = None
     # photos attached to the request (shrunk JPEG data URLs): a design reference by default
     images: list[str] = Field(default_factory=list, max_length=code.MAX_IMAGES)
+    # the screen this page is made for (the user picks it when making the page)
+    device: Literal["phone", "tablet"] | None = None
 
 
 @router.post("/ai/app", tags=["ai"])
@@ -455,7 +457,7 @@ async def ai_app(
 
     async def events():
         ok = False
-        async for line in code.run(prompt, body.html, body.name, None if body.html else body.page, images, plus=plus):
+        async for line in code.run(prompt, body.html, body.name, None if body.html else body.page, images, plus=plus, device=body.device):
             ev = json.loads(line)
             if ev["t"] == "done":
                 ok = ev.get("html") is not None

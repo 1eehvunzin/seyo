@@ -2,7 +2,7 @@ import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Face, FaceStack } from '@/components/Faces';
-import { AccountSheet, NameSheet, PaywallSheet } from '@/components/Sheets';
+import { AccountSheet, LoginSheet, NameSheet, PaywallSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
 import { WidgetView } from '@/components/WidgetView';
 import { confirmAction, notice } from '@/lib/confirm';
@@ -49,7 +49,8 @@ function pack(pages: Page[], cols: number, rows: number, cell: number): { slots:
 
 /** 08 · 홈. 페이지가 넘치면 옆으로 넘긴다. (구독은 결제가 붙기 전까지 '곧 열려요') */
 export default function Home() {
-  const { pages, loggedIn, ready, plus, logout, me, setName, markPaywallSeen } = useStore();
+  const { pages, loggedIn, guest, login, ready, plus, logout, me, setName, markPaywallSeen } = useStore();
+  const [loginOpen, setLoginOpen] = useState(false);
   /** no name from the login: ask once (this visit); or opened from the account menu */
   const [nameAsked, setNameAsked] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -62,7 +63,7 @@ export default function Home() {
   const [accountOpen, setAccountOpen] = useState(false);
 
   if (!ready) return null;
-  if (!loggedIn) return <Redirect href="/" />;
+  if (!loggedIn && !guest) return <Redirect href="/" />;
 
   // Soft paywall, once per account, like most subscription apps: right after onboarding, once the
   // first page exists (consent and nickname done). Later it shows only at the limits or from 계정.
@@ -91,10 +92,23 @@ export default function Home() {
             <T w={600} s={34} ls={-0.03} accessibilityRole="header">
               내 페이지
             </T>
+            {guest && (
+              <T s={13} c={C.sub}>
+                이 기기에만 저장돼요 · 로그인하면 어디서든 열고 공유할 수 있어요
+              </T>
+            )}
           </View>
-          <Btn accessibilityLabel="내 계정" onPress={() => setAccountOpen(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.fill, alignItems: 'center', justifyContent: 'center' }}>
-            <T s={14}>{ME.initial}</T>
-          </Btn>
+          {guest ? (
+            <Btn accessibilityLabel="로그인" onPress={() => setLoginOpen(true)} style={{ height: 40, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }}>
+              <T s={14} w={500}>
+                로그인
+              </T>
+            </Btn>
+          ) : (
+            <Btn accessibilityLabel="내 계정" onPress={() => setAccountOpen(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.fill, alignItems: 'center', justifyContent: 'center' }}>
+              <T s={14}>{ME.initial}</T>
+            </Btn>
+          )}
         </View>
 
         <View style={{ flex: 1 }} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
@@ -133,6 +147,16 @@ export default function Home() {
         onSubscribe={() => {
           closePay();
           notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 지금은 무료로 계속 쓸 수 있어요.');
+        }}
+      />
+      <LoginSheet
+        visible={loginOpen}
+        onDismiss={() => setLoginOpen(false)}
+        title="로그인하고 계속 쓰기"
+        sub="이 기기에서 만든 페이지는 계정으로 그대로 옮겨져요."
+        onLogin={(p) => {
+          login(p);
+          setLoginOpen(false);
         }}
       />
       <NameSheet

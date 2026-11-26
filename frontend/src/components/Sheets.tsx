@@ -77,7 +77,22 @@ const showTerms = (path: '/terms' | '/privacy') => {
 
 /* ───────── 07 · 로그인 모달 ───────── */
 
-export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; onDismiss: () => void; onLogin: (p: 'apple' | 'kakao') => void }) {
+export function LoginSheet({
+  visible,
+  onDismiss,
+  onLogin,
+  onSkip,
+  title,
+  sub,
+}: {
+  visible: boolean;
+  onDismiss: () => void;
+  onLogin: (p: 'apple' | 'kakao') => void;
+  /** offer 로그인 없이 쓰기 (pages stay on this device, no sharing) */
+  onSkip?: () => void;
+  title?: string;
+  sub?: string;
+}) {
   const { draft, pendingInvite } = useStore();
   const web = Platform.OS === 'web';
   const [failed, setFailed] = useState<string | null>(null);
@@ -114,10 +129,10 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
       <View style={{ paddingTop: 44, paddingHorizontal: 40, paddingBottom: 32, gap: 32 }}>
         <View style={{ gap: 12, alignItems: 'center' }}>
           <T w={600} s={26} lh={1.4} ls={-0.03} center accessibilityRole="header">
-            {draft ? '이 페이지를 저장해 둘게요' : '다시 만나서 반가워요'}
+            {title ?? (draft ? '이 페이지를 저장해 둘게요' : '다시 만나서 반가워요')}
           </T>
           <T w={300} s={15} lh={1.6} c={C.sub} center>
-            {draft ? '로그인하면 방금 만든 페이지가 그대로 남아요.' : '로그인하면 내 페이지를 이어서 쓸 수 있어요.'}
+            {sub ?? (draft ? '로그인하면 방금 만든 페이지가 그대로 남아요.' : '로그인하면 내 페이지를 이어서 쓸 수 있어요.')}
           </T>
         </View>
         <View style={{ gap: 10 }}>
@@ -150,6 +165,16 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
             </T>
           </Btn>
         </View>
+        {onSkip && (
+          <Btn onPress={onSkip} style={{ alignItems: 'center', gap: 4, paddingVertical: 4 }}>
+            <T w={500} s={14} c={C.ink2} style={{ textDecorationLine: 'underline' }}>
+              로그인 없이 쓰기
+            </T>
+            <T s={12} c={C.muted} center>
+              이 기기에만 저장되고, 다른 사람과 공유할 수 없어요
+            </T>
+          </Btn>
+        )}
         <T s={12} c={C.muted} lh={1.5} center>
           처음 시작할 때 만 14세 이상인지와{' '}
           <T s={12} c={C.sub} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/terms')} accessibilityRole="link">
@@ -576,6 +601,30 @@ export function NameSheet({ visible, current, onClose, onSave }: { visible: bool
             </T>
           </Btn>
         </View>
+      </View>
+    </Sheet>
+  );
+}
+
+/** A page made for the other kind of screen: say so (cutely); the user keeps viewing it as is. */
+export function DeviceSheet({ visible, made, onKeep }: { visible: boolean; made: 'phone' | 'tablet'; onKeep: () => void }) {
+  const forPad = made === 'tablet';
+  return (
+    <Sheet visible={visible} onDismiss={onKeep} width={420} label="화면 안내">
+      <View style={{ paddingTop: 40, paddingHorizontal: 36, paddingBottom: 28, gap: 22 }}>
+        <View style={{ gap: 10, alignItems: 'center' }}>
+          <T w={600} s={22} lh={1.4} ls={-0.03} center accessibilityRole="header">
+            {forPad ? '아이패드에 맞춘 페이지예요' : '휴대폰에 맞춘 페이지예요'}
+          </T>
+          <T s={15} lh={1.6} c={C.sub} center>
+            {forPad ? '휴대폰에선 화면이 좁아서 보기 불편할 수 있어요 ㅠㅠ' : '아이패드에선 화면이 휑해 보일 수 있어요 ㅠㅠ'}
+          </T>
+        </View>
+        <Btn onPress={onKeep} style={{ height: 52, borderRadius: 26, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
+          <T w={500} s={15} c={C.white}>
+            그대로 볼게요 !
+          </T>
+        </Btn>
       </View>
     </Sheet>
   );

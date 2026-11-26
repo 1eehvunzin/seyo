@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, Me, ServerPage } from './lib/api';
 import { Answers, Page } from './lib/page';
@@ -9,6 +10,8 @@ import { loadToken, saveToken } from './lib/session';
  * - the session token is kept across reloads (lib/session.ts) and restored on launch
  * - a change shows at once and is sent to the server in the background (edits are batched)
  * - a page made on the device gets its server id when it's saved; the old id keeps working
+ * Without an account (로그인 없이 쓰기): pages stay on this device only (AsyncStorage: localStorage on
+ * the web), nothing is shared, and logging in later moves them into the account.
  */
 type Store = {
   answers: Answers;
@@ -27,6 +30,10 @@ type Store = {
   /** false until the saved session has been checked on launch */
   ready: boolean;
   loggedIn: boolean;
+  /** using the app without an account: pages live on this device only, no sharing */
+  guest: boolean;
+  /** start (or keep) using the app without an account; the onboarding draft becomes a local page */
+  enterGuest: (draft?: Page | null) => void;
   me: Me | null;
   /** change the nickname (server first, then here) */
   setName: (name: string) => Promise<void>;
@@ -71,6 +78,21 @@ function docOf(p: Partial<Page>): Partial<Page> {
 }
 
 const PATCH_DELAY = 700;
+const GUEST_KEY = 'seyo.guest';
+const LOCAL_PAGES_KEY = 'seyo.localPages';
+
+async function loadLocalPages(): Promise<Page[]> {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_PAGES_KEY);
+    return raw ? (JSON.parse(raw) as Page[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function clearGuest() {
+  await AsyncStorage.multiRemove([GUEST_KEY, LOCAL_PAGES_KEY]).catch(() => {});
+}
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [answers, setA] = useState<Answers>(initialAnswers);
@@ -79,7 +101,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [pendingInvite, setPendingInvite] = useState<string | null>(null);
+  const [guestMode, setGuestMode] = useState(false);
   const loggedIn = !!me;
+  const guest = guestMode && !loggedIn;
 
   /** local id → server id, for pages made on the device before the server answered */
   const alias = useRef(new Map<string, string>());
@@ -117,6 +141,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             api.setToken(null);
             saveToken(null);
           }
+        }
+      }
+      // no account: pick up the pages kept on this device
+      if (!api.hasToken() && (await AsyncStorage.getItem(GUEST_KEY).catch(() => null)) === '1') {
+        const local = await loadLocalPages();
+        if (alive) {
+          setPages(local);
+          setGuestMode(true);
         }
       }
       if (alive) setReady(true);
@@ -196,6 +228,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [loggedIn, pages],
   );
 
+  // without an account: every change is kept on this device
+  useEffect(() => {
+    if (!guest) return;
+    AsyncStorage.setItem(LOCAL_PAGES_KEY, JSON.stringify(pages)).catch(() => {});
+  }, [guest, pages]);
+
+  const enterGuest = useCallback(
+    (first?: Page | null) => {
+      const page = first !== undefined ? first : draft;
+      AsyncStorage.setItem(GUEST_KEY, '1').catch(() => {});
+      setGuestMode(true);
+      if (page) setPages((list) => [page, ...list.filter((x) => x.id !== page.id)]);
+      setDraft(null);
+    },
+    [draft],
+  );
+
   const setName = useCallback(async (name: string) => {
     setMe(await api.setName(name));
   }, []);
@@ -232,20 +281,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (_provider: 'apple' | 'kakao', opts?: { draft?: Page | null }) => {
       const first = opts?.draft !== undefined ? opts.draft : draft;
       (async () => {
+        // pages made without an account on this device move into the account
+        const local = guestMode ? pages : (await AsyncStorage.getItem(GUEST_KEY).catch(() => null)) === '1' ? await loadLocalPages() : [];
         const [m, list] = await Promise.all([api.me(), api.pages()]);
         setMe(m);
         const existing = fromServer(list);
-        setPages(first ? [first, ...existing.filter((x) => x.id !== first.id)] : existing);
+        const moving = [...(first ? [first] : []), ...local.filter((x) => x.id !== first?.id)];
+        setPages([...moving, ...existing.filter((x) => !moving.some((y) => y.id === x.id))]);
         setDraft(null);
-        // the page made during onboarding becomes the account's first page
-        if (first) createOnServer(first);
+        setGuestMode(false);
+        await clearGuest();
+        // the onboarding page and the device's pages become the account's pages
+        moving.forEach((p) => createOnServer(p));
         if (pendingInvite) {
           joinInvite(pendingInvite).catch(() => {});
           setPendingInvite(null);
         }
       })().catch(() => {});
     },
-    [draft, pendingInvite, createOnServer, joinInvite],
+    [draft, guestMode, pages, pendingInvite, createOnServer, joinInvite],
   );
 
   const logout = useCallback(() => {
@@ -253,6 +307,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     api.setToken(null);
     saveToken(null);
     setMe(null);
+    setGuestMode(false);
+    clearGuest();
     setPages([]);
     setDraft(null);
     setPendingInvite(null);
@@ -282,6 +338,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       getPage: (id) => pages.find((p) => p.id === id || p.id === alias.current.get(id)) ?? (draft?.id === id ? draft : undefined),
       ready,
       loggedIn,
+      guest,
+      enterGuest,
       me,
       setName,
       agree,
@@ -294,7 +352,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       joinInvite,
       refreshPage,
     }),
-    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, me, setName, agree, markPaywallSeen, login, logout, pendingInvite, joinInvite, refreshPage],
+    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, guest, enterGuest, me, setName, agree, markPaywallSeen, login, logout, pendingInvite, joinInvite, refreshPage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

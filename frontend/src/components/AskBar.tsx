@@ -77,7 +77,7 @@ export function usePageEditor(initial: Page | null, onCommit?: (p: Page) => void
     try {
       if (page.main.kind === 'app') {
         const app = page.main;
-        const r = await runApp(text.trim(), app.html, setLive, page.name, undefined, undefined, images);
+        const r = await runApp(text.trim(), app.html, setLive, page.name, undefined, undefined, images, page.device);
         if (r.left !== null) {
           setLeft(r.left);
           setLimited(r.left <= 0);

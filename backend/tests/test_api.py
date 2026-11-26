@@ -368,7 +368,7 @@ def test_guest_first_page_is_free(client, monkeypatch):
 
     from app import code
 
-    async def fake_run(prompt, html, name=None, page=None, images=None, plus=False):
+    async def fake_run(prompt, html, name=None, page=None, images=None, plus=False, device=None):
         yield _json.dumps({"t": "done", "html": "<!doctype html><html><body>x</body></html>", "summary": "만들었어요"}) + "\n"
 
     monkeypatch.setattr(code, "available", lambda: True)
@@ -468,7 +468,7 @@ def test_plus_new_pages_use_smart_model_up_to_cap(client, monkeypatch):
 
     seen = []
 
-    async def fake_run(prompt, html, name=None, page=None, images=None, plus=False):
+    async def fake_run(prompt, html, name=None, page=None, images=None, plus=False, device=None):
         seen.append(plus)
         yield _json.dumps({"t": "done", "html": "<!doctype html><html><body>x</body></html>", "summary": "만들었어요"}) + "\n"
 

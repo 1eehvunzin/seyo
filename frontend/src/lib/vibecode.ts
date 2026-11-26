@@ -6,7 +6,7 @@
  */
 import { api } from './api';
 import { htmlSoFar } from './appdoc';
-import { newToken, Page, uid } from './page';
+import { Device, newToken, Page, uid } from './page';
 import { pageToApp } from './page2app';
 
 /**
@@ -19,13 +19,13 @@ export type AppResult = { html: string | null; summary: string; left: number | n
 
 /** Throws ApiError (402 = out of tries) or Error (server unreachable / failed). */
 /** `images`: photos attached to the request (data URLs) — a design reference unless the request says otherwise. */
-export async function runApp(prompt: string, html: string | null, onLive: (l: Live) => void, name?: string, crash?: string, from?: Page, images?: string[]): Promise<AppResult> {
+export async function runApp(prompt: string, html: string | null, onLive: (l: Live) => void, name?: string, crash?: string, from?: Page, images?: string[], device?: Device): Promise<AppResult> {
   let text = '';
   let full = !html; // the stream is a whole HTML file (create, or a rewrite after restart)
   let last = 0;
   let result: AppResult | null = null;
   let error: string | null = null;
-  await api.appStream({ prompt, html, name, error: crash, page: from, images: images?.length ? images : undefined }, (e) => {
+  await api.appStream({ prompt, html, name, error: crash, page: from, images: images?.length ? images : undefined, device }, (e) => {
     if (e.t === 'code') {
       text += e.d;
       const now = Date.now();
@@ -66,9 +66,10 @@ export function appName(html: string, prompt: string): string {
   return (t || prompt.trim()).slice(0, 24);
 }
 
-export function appPage(html: string, prompt: string): Page {
+export function appPage(html: string, prompt: string, device?: Device): Page {
   const now = Date.now();
   return {
+    device,
     id: uid('page'),
     name: appName(html, prompt),
     theme: 'clean',
@@ -97,7 +98,7 @@ export function appPage(html: string, prompt: string): Page {
  */
 export async function convertToApp(page: Page, prompt: string, onLive: (l: Live) => void, images?: string[]): Promise<{ page: Page | null; summary: string; left: number | null }> {
   const base = pageToApp(page);
-  const r = base ? await runApp(prompt, base, onLive, page.name, undefined, undefined, images) : await runApp(prompt, null, onLive, page.name, undefined, page, images);
+  const r = base ? await runApp(prompt, base, onLive, page.name, undefined, undefined, images, page.device) : await runApp(prompt, null, onLive, page.name, undefined, page, images, page.device);
   if (!r.html) return { page: null, summary: r.summary, left: r.left };
   return {
     page: { ...page, main: { kind: 'app', html: r.html, state: {} }, top: null, reason: null, side: null, memo: null, widget: { size: 'small', templates: ['bigNumber'] }, updatedAt: Date.now() },

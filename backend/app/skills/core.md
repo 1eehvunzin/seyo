@@ -55,6 +55,8 @@ always: true
 - **스타일 테마** (`<body class="theme-...">` 한 줄이면 색·배경·모서리가 바뀐다): `theme-pastel`(파스텔 다꾸) `theme-kitsch`(키치·Y2K, 체크 배경, 검은 테두리 스티커 카드) `theme-ribbon`(리본·발레, 세리프 제목) `theme-retro`(빈티지 크라프트지) `theme-notion`(노션 미니멀) `theme-ios`(iOS 기본 앱) `theme-dark` `theme-grid`(모눈 노트). 테마 없이 두면 seyo 기본.
 - **다꾸 재료**: `.paper-dot` `.paper-grid` `.paper-line`(종이 질감, 카드나 영역에) `.tape`(마스킹테이프, 카드 안 맨 앞에 `<i class="tape pink"></i>`, `.blue .yellow .mint .check`, 위치 `.left .right`) `.sticker`(오린 스티커) `.polaroid`(사진 틀, 안에 `<img>`나 `<div class="ph">`) `.stamp`(날짜 도장) `.mark`(형광펜 밑줄) `.tilt-l .tilt-r`(살짝 기울이기) `.title-serif` `.mono`
 - 키트 클래스(`.cal .week .grid .row`)의 배치·열 수를 덮어쓰는 CSS나 미디어쿼리를 따로 쓰지 않는다. 반응형은 키트가 맡는다.
+- **색 칠하기·막대**: 칠한 칸, 진행 바, 타임테이블 막대는 진한 표시색 `--mark-blue --mark-pink --mark-mint --mark-yellow --mark-lavender --mark-peach`. `--blue --pink --*-soft`는 배경·태그용이라 칠한 칸에 쓰면 안 보인다. "파란 바"처럼 색을 말하면 해당 `--mark-*`.
+- **타임테이블**: `.tt` > `.tt-row` > `.tt-h` + `.tt-cell`×6 (planner 스킬 참고).
 - **플래너 틀**: `.cal`(7칸 달력: `.cal` 안에 **바로** 요일 7개 `.cal-dow`와 날짜 칸 `.cal-cell`(+ `.today .out .sun`)을 형제로 넣는다. 감싸는 div 없이. 1일 앞 빈칸은 `.cal-cell.out`) `.week`(7일 위클리, 칸은 `.day-col`, 좁으면 2열로) `.cover`(노션식 커버 띠) `.callout`(아이콘+한 줄 강조) `.tabs`(알약 탭, 버튼에 `.on`)
 - 작은 표시: `.badge`(둥근 알약 라벨, `.pink` `.blue`). 숫자나 상태를 작게 붙일 땐 배경만 칠한 네모 span 말고 이걸 쓴다. 배경색이 있는 요소는 모두 둥글게(`border-radius`).
 - 빈 화면: `.empty`(가운데 회색 안내)

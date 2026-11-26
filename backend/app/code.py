@@ -353,6 +353,14 @@ _clients: dict[str, object] = {}
 _usage: contextvars.ContextVar[list[dict] | None] = contextvars.ContextVar("code_usage", default=None)
 # paid (plus) users get the stronger model for new pages; everyone else runs on the free model
 _plus: contextvars.ContextVar[bool] = contextvars.ContextVar("code_plus", default=False)
+# an edit that says the last one didn't land ("아직 안 됐어", "제대로") runs on the stronger model,
+# so people don't have to keep asking (one Sonnet edit ≈ ₩50)
+_retry: contextvars.ContextVar[bool] = contextvars.ContextVar("code_retry", default=False)
+_ASK_AGAIN = re.compile(r"아직|여전히|안\s*됐|안\s*돼|안\s*되|제대로|다시\s*(해|고쳐|만들)|왜\s*안|반영\s*안|안\s*바뀌|그대로(야|네|잖)|또\s*안|못\s*알아")
+
+
+def asks_again(prompt: str) -> bool:
+    return bool(_ASK_AGAIN.search(prompt or ""))
 
 
 def usage() -> dict:
@@ -385,7 +393,10 @@ async def _stream(system: str, user: str, images: list[str] | None = None, edit:
     get them; repair passes don't need to look again). `edit`: a SEARCH/REPLACE edit, which runs on
     the faster edit model; new pages and full rewrites run on the main code model."""
     s = get_settings()
-    model = s.openai_code_edit_model if edit or not _plus.get() else s.openai_code_model
+    if _retry.get():
+        model = s.openai_code_model  # the user is asking again: the stronger model gets it right
+    else:
+        model = s.openai_code_edit_model if edit or not _plus.get() else s.openai_code_model
     if s.openai_api_key and s.ai_provider != "anthropic":
         if "openai" not in _clients:
             _clients["openai"] = openai.AsyncOpenAI(api_key=s.openai_api_key, base_url=s.openai_base_url or None, timeout=120)
@@ -574,6 +585,7 @@ async def run(prompt: str, html: str | None, name: str | None = None, page: dict
     use them; the page can show them through {{photoN}})."""
     _usage.set([])
     _plus.set(plus)
+    _retry.set(bool(html) and asks_again(prompt))
     images = [u for u in (images or []) if u.startswith("data:image/")][:MAX_IMAGES]
     kept: list[str] = []
     if html:

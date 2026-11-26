@@ -4,7 +4,7 @@
  * keep the two in sync when adding or renaming classes.
  */
 export const APP_KIT_SRC = `
-:root{--ink:#1d1d1f;--sub:#6e6e73;--faint:#aeaeb2;--line:#e5e5ea;--fill:#f5f5f7;--card:#fff;--pink:#f8d7e2;--pink-soft:#fcedf2;--blue:#cfe2f6;--blue-soft:#eef4fb;--accent:#ec8cb1;--accent-2:#79a8e6;--accent-soft:#fcedf2;--good:#248a3d;--bad:#d70015;--r:20px;
+:root{--ink:#1d1d1f;--sub:#6e6e73;--faint:#aeaeb2;--line:#e5e5ea;--fill:#f5f5f7;--card:#fff;--pink:#f8d7e2;--pink-soft:#fcedf2;--blue:#cfe2f6;--blue-soft:#eef4fb;--mark-blue:#7fb0e8;--mark-pink:#ef9ab8;--mark-mint:#7fd1b4;--mark-yellow:#f5d66b;--mark-lavender:#b9a5ea;--mark-peach:#f6b58e;--accent:#ec8cb1;--accent-2:#79a8e6;--accent-soft:#fcedf2;--good:#248a3d;--bad:#d70015;--r:20px;
 font-family:"Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo",system-ui,sans-serif;color:var(--ink);letter-spacing:-.015em;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:transparent;min-height:100%}
@@ -64,6 +64,8 @@ body{background:var(--bg,transparent)}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.cal-dow{text-align:center;font-size:12px;color:var(--sub);padding:4px 0}
 .cal-cell{min-height:64px;padding:6px;border-radius:12px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);font-size:13px;display:flex;flex-direction:column;gap:3px;cursor:pointer}
 .cal>:not(.cal-dow):not(.cal-cell),.cal>.cal-dow:has(>*){grid-column:1/-1}.cal>:not(.cal-cell):has(>.cal-cell),.cal>.cal-dow:has(>*){display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+/* timetable: one row per hour, six 10-minute cells across; filled cells use strong marker colors */
+.tt{display:grid;gap:3px}.tt-row{display:grid;grid-template-columns:34px repeat(6,minmax(0,1fr));gap:2px;align-items:center}.tt-h{font-size:11px;color:var(--muted);text-align:right;padding-right:6px}.tt-cell{height:22px;border-radius:4px;background:var(--fill);cursor:pointer;border:0;padding:0}.tt-cell.on,.tt-cell.c-blue{background:var(--mark-blue)}.tt-cell.c-pink{background:var(--mark-pink)}.tt-cell.c-mint{background:var(--mark-mint)}.tt-cell.c-yellow{background:var(--mark-yellow)}.tt-cell.c-lavender{background:var(--mark-lavender)}.tt-cell.c-peach{background:var(--mark-peach)}
 .cal-cell.out{opacity:.35}.cal-cell.today{box-shadow:inset 0 0 0 2px var(--accent)}.cal-cell.sun{color:var(--bad)}
 .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}.day-col{display:flex;flex-direction:column;gap:6px;min-height:150px;padding:12px;border-radius:16px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line)}
 @media (max-width:760px){.week{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-cell{min-height:48px}}

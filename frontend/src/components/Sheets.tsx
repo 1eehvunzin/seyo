@@ -122,10 +122,10 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
       <View style={{ paddingTop: 44, paddingHorizontal: 40, paddingBottom: 32, gap: 32 }}>
         <View style={{ gap: 12, alignItems: 'center' }}>
           <T w={600} s={26} lh={1.4} ls={-0.03} center accessibilityRole="header">
-            이 페이지를 저장해 둘게요
+            {draft ? '이 페이지를 저장해 둘게요' : '다시 만나서 반가워요'}
           </T>
           <T w={300} s={15} lh={1.6} c={C.sub} center>
-            로그인하면 방금 만든 페이지가 그대로 남아요.
+            {draft ? '로그인하면 방금 만든 페이지가 그대로 남아요.' : '로그인하면 내 페이지를 이어서 쓸 수 있어요.'}
           </T>
         </View>
         <View style={{ gap: 10 }}>

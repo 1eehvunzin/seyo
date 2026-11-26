@@ -99,6 +99,14 @@ export default function Start() {
 
   return (
     <Screen>
+      {/* already have an account (or just want to sign up first): skip the try-out */}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: gutter, paddingTop: 14 }}>
+        <Btn onPress={() => setLoginOpen(true)} accessibilityLabel="로그인" style={{ height: 40, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }}>
+          <T s={14} w={500}>
+            로그인
+          </T>
+        </Btn>
+      </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: gutter, paddingVertical: 32 }} keyboardShouldPersistTaps="handled">
           <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', gap: height < 700 ? 24 : 36 }}>

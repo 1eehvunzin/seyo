@@ -9,7 +9,7 @@ type Slot = { key: number; doc: string };
  * Double-buffered: a new version (a streaming preview tick or a finished edit) loads in a hidden
  * frame and fades in once it has loaded, so the page never flashes white between versions.
  */
-export function AppFrame({ html, state, onSave, live, onError }: AppFrameProps) {
+export function AppFrame({ html, state, onSave, live, onError, ink }: AppFrameProps) {
   const save = useRef(onSave);
   const fail = useRef(onError);
   useEffect(() => {
@@ -42,8 +42,14 @@ export function AppFrame({ html, state, onSave, live, onError }: AppFrameProps) 
     return () => window.removeEventListener('message', on);
   }, [newest, frames]);
 
+  // 필기: the tool (and one-off photo/undo actions) go to the frame on screen
+  useEffect(() => {
+    if (ink) frames.get(shown.front)?.contentWindow?.postMessage({ seyoInk: ink }, '*');
+  }, [ink, shown.front, frames]);
+
   // the new frame sits on top and fades in; the old one stays under it until the fade is done
   const loaded = (key: number) => {
+    if (ink) frames.get(key)?.contentWindow?.postMessage({ seyoInk: { tool: ink.tool, color: ink.color, seq: ink.seq } }, '*');
     setShown((s) => (key === s.slots[s.slots.length - 1].key && s.front !== key ? { ...s, front: key } : s));
     setTimeout(() => setShown((s) => (s.front === key && s.slots.length > 1 ? { ...s, slots: s.slots.filter((x) => x.key === key) } : s)), 260);
   };

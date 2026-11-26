@@ -10,8 +10,9 @@ type Slot = { key: number; doc: string; fade: Animated.Value };
  * Double-buffered like the web frame: a new version loads in a hidden WebView and fades in once
  * it has loaded, so streaming previews and finished edits don't flash.
  */
-export function AppFrame({ html, state, onSave, live, onError }: AppFrameProps) {
+export function AppFrame({ html, state, onSave, live, onError, ink }: AppFrameProps) {
   const save = useRef(onSave);
+  const views = useRef(new Map<number, { injectJavaScript: (js: string) => void }>());
   const fail = useRef(onError);
   useEffect(() => {
     save.current = live ? undefined : onSave;
@@ -28,7 +29,14 @@ export function AppFrame({ html, state, onSave, live, onError }: AppFrameProps) 
   }
   const newest = shown.slots[shown.slots.length - 1].key;
 
+  const send = (key: number, cmd: AppFrameProps['ink']) => cmd && views.current.get(key)?.injectJavaScript(`window.__seyoInk&&window.__seyoInk(${JSON.stringify(cmd)});true;`);
+  // 필기: the tool (and one-off photo/undo actions) go to the WebView on screen
+  useEffect(() => {
+    send(shown.front, ink);
+  }, [ink, shown.front]);
+
   const loaded = (slot: Slot) => {
+    if (ink) send(slot.key, { tool: ink.tool, color: ink.color, seq: ink.seq });
     if (slot.key !== newest || slot.key === shown.front) return;
     setShown((s) => ({ ...s, front: slot.key }));
     Animated.timing(slot.fade, { toValue: 1, duration: 220, useNativeDriver: true }).start(() =>
@@ -41,6 +49,10 @@ export function AppFrame({ html, state, onSave, live, onError }: AppFrameProps) 
       {shown.slots.map((s) => (
         <Animated.View key={s.key} pointerEvents={s.key === shown.front ? 'auto' : 'none'} style={[StyleSheet.absoluteFill, { opacity: s.fade }]}>
           <WebView
+            ref={(v) => {
+              if (v) views.current.set(s.key, v);
+              else views.current.delete(s.key);
+            }}
             originWhitelist={['about:*']}
             source={{ html: s.doc }}
             onShouldStartLoadWithRequest={(r) => r.url.startsWith('about:')}

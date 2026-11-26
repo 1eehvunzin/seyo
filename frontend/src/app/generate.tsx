@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/api';
 import { followUpWithAi, planFromPrompt, PROMPT_EXAMPLES, TEMPLATES } from '@/lib/generate';
 import { appPage, Live, liveLabel, repairApp, runApp } from '@/lib/vibecode';
 import { AppFrame } from '@/components/AppFrame';
-import { AttachButton, AttachTray, PinterestChip, RefStatus, refPlaceholder } from '@/components/Attach';
+import { AttachButton, AttachTray, PinterestChip, RefHint, RefStatus, refPlaceholder } from '@/components/Attach';
 import { DevicePick } from '@/components/DevicePick';
 import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
 import { MakingOverlay, PageSkeleton } from '@/components/Making';
@@ -295,10 +295,14 @@ export default function Generate() {
               </View>
             )}
 
-            {!page && <DevicePick value={device} onChange={setDevice} />}
+            {/* screen choice and Pinterest side by side (wraps when the column is narrow) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              {!page && <DevicePick value={device} onChange={setDevice} />}
+              {!thinking && !building && !text.trim() && !photos.length && <PinterestChip refs={refs} query={page?.name || ''} />}
+            </View>
+            {!page && !photos.length && <RefHint />}
             <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
             <RefStatus refs={refs} />
-            {!thinking && !building && !text.trim() && !photos.length && <PinterestChip refs={refs} query={page?.name || ''} />}
             <View style={{ height: 56, borderRadius: 28, borderWidth: 1, borderColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 20, paddingRight: 6 }}>
               <TextInput
                 ref={input}

@@ -57,6 +57,8 @@ always: true
 - 키트 클래스(`.cal .week .grid .row`)의 배치·열 수를 덮어쓰는 CSS나 미디어쿼리를 따로 쓰지 않는다. 반응형은 키트가 맡는다.
 - **색 칠하기·막대**: 칠한 칸, 진행 바, 타임테이블 막대는 진한 표시색 `--mark-blue --mark-pink --mark-mint --mark-yellow --mark-lavender --mark-peach`. `--blue --pink --*-soft`는 배경·태그용이라 칠한 칸에 쓰면 안 보인다. "파란 바"처럼 색을 말하면 해당 `--mark-*`.
 - **타임테이블**: `.tt` > `.tt-row` > `.tt-h` + `.tt-cell`×6 (planner 스킬 참고).
+- **프레임 꽉 채우기**: 페이지 바깥 틀은 `.app` 하나(키트가 폭을 화면에 맞춘다). 따로 `max-width`·좁은 가운데 정렬을 쓰지 않는다. 2열은 `grid-template-columns:1fr 1fr`(또는 `2fr 1fr`)에 `align-items:stretch`로 열 높이를 맞춘다.
+- **라벨 | 값 줄**(DATE, GOAL, 목표 시간 등): `.kv` 안에 라벨과 값을 형제로 넣어 한 줄에 정렬한다. 라벨을 값 위에 따로 띄우지 않는다.
 - **플래너 틀**: `.cal`(7칸 달력: `.cal` 안에 **바로** 요일 7개 `.cal-dow`와 날짜 칸 `.cal-cell`(+ `.today .out .sun`)을 형제로 넣는다. 감싸는 div 없이. 1일 앞 빈칸은 `.cal-cell.out`) `.week`(7일 위클리, 칸은 `.day-col`, 좁으면 2열로) `.cover`(노션식 커버 띠) `.callout`(아이콘+한 줄 강조) `.tabs`(알약 탭, 버튼에 `.on`)
 - 작은 표시: `.badge`(둥근 알약 라벨, `.pink` `.blue`). 숫자나 상태를 작게 붙일 땐 배경만 칠한 네모 span 말고 이걸 쓴다. 배경색이 있는 요소는 모두 둥글게(`border-radius`).
 - 빈 화면: `.empty`(가운데 회색 안내)

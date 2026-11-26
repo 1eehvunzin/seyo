@@ -9,7 +9,10 @@ import { DeviceSheet, LoginSheet, PaywallSheet, ShareSheet } from '@/components/
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
 import { confirmAction, notice } from '@/lib/confirm';
 import { api } from '@/lib/api';
+import { InkCmd } from '@/lib/appdoc';
+import { pickPhotos } from '@/lib/attach';
 import { deviceOf, Person } from '@/lib/page';
+import { InkBar } from '@/components/InkBar';
 import { useStore } from '@/store';
 import { C, F } from '@/theme';
 
@@ -21,6 +24,15 @@ export default function PageScreen() {
   const { appGutter, compact, width } = useLayout();
   /** this page was made for the other kind of screen and the user hasn't said to keep it */
   const [deviceOk, setDeviceOk] = useState(false);
+  /** 입력 (typing, the page's own controls) or 필기 (pen, highlighter, photos on top of the page) */
+  const [ink, setInk] = useState<InkCmd>({ tool: 'off', color: '#1d1d1f', seq: 0 });
+  const drawing = ink.tool !== 'off';
+  const inkTool = (tool: InkCmd['tool'], color?: string) => setInk((k) => ({ tool, color: color ?? k.color, seq: k.seq }));
+  const inkPhoto = async () => {
+    const [url] = await pickPhotos(1);
+    if (url) setInk((k) => ({ tool: 'move', color: k.color, seq: k.seq + 1, image: url }));
+  };
+  const inkUndo = () => setInk((k) => ({ tool: k.tool, color: k.color, seq: k.seq + 1, undo: true }));
   const ed = usePageEditor(stored ?? null, ({ members: _m, inviteToken: _t, owner: _o, ...rest }) => patchPage(rest.id, rest));
   const [editing, setEditing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -84,6 +96,31 @@ export default function PageScreen() {
             />
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {page.main.kind === 'app' && (
+                <View accessibilityRole="radiogroup" accessibilityLabel="입력 방식" style={{ flexDirection: 'row', padding: 3, borderRadius: 18, backgroundColor: C.fill }}>
+                  {(['입력', '필기'] as const).map((m) => {
+                    const on = (m === '필기') === drawing;
+                    return (
+                      <Btn
+                        key={m}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: on }}
+                        onPress={() => {
+                          if (m === '필기') {
+                            setEditing(false);
+                            inkTool(drawing ? ink.tool : 'pen');
+                          } else inkTool('off');
+                        }}
+                        style={{ height: 30, paddingHorizontal: 12, borderRadius: 15, justifyContent: 'center', backgroundColor: on ? C.white : 'transparent' }}
+                      >
+                        <T s={13} w={on ? 600 : 400} c={on ? C.ink : C.sub}>
+                          {m}
+                        </T>
+                      </Btn>
+                    );
+                  })}
+                </View>
+              )}
               {isOwner ? (
                 <>
                   {/* without an account a page stays on this device: no sharing */}
@@ -95,7 +132,10 @@ export default function PageScreen() {
                   )}
                   <Btn
                     accessibilityState={{ selected: editing }}
-                    onPress={() => setEditing((e) => !e)}
+                    onPress={() => {
+                      inkTool('off');
+                      setEditing((e) => !e);
+                    }}
                     style={{ height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: editing ? C.ink : C.fill, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                   >
                     <Icon name="pencil" size={14} color={editing ? C.white : C.ink} stroke={1.8} />
@@ -127,7 +167,7 @@ export default function PageScreen() {
           </View>
 
           <View style={{ flex: 1 }}>
-            <PageCanvas page={page} onChange={ed.update} highlight={ed.change} onAppError={isOwner ? ed.repair : undefined} />
+            <PageCanvas page={page} onChange={ed.update} highlight={ed.change} onAppError={isOwner ? ed.repair : undefined} ink={ink} />
             <MakingOverlay on={ed.busy} live={ed.live} />
           </View>
           {/* floats over the page so the header never reflows */}
@@ -135,7 +175,9 @@ export default function PageScreen() {
             <Toast toast={ed.toast} onUndo={ed.undo} />
           </View>
 
-          {editing && isOwner && (
+          {drawing && <InkBar tool={ink.tool} color={ink.color} onTool={inkTool} onPhoto={inkPhoto} onUndo={inkUndo} />}
+
+          {editing && isOwner && !drawing && (
             <View style={{ gap: 8 }}>
               <AskBar
                 photos={photos}

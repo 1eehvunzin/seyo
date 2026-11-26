@@ -6,6 +6,7 @@ import { addDays, dday, parseLooseDate, shortEn, WEEK_KO, weekdayIndex } from '@
 import { Change, LogField, Main, Page, Todo, uid } from '@/lib/page';
 import { nextClass, TIMETABLE_DAYS, TIMETABLE_PERIODS } from '@/lib/timetable';
 import { C, F, THEMES, TIMETABLE } from '@/theme';
+import { InkCmd } from '@/lib/appdoc';
 import { AppFrame } from './AppFrame';
 import { Btn, Chip, Icon, IconButton, Star, T } from './ui';
 
@@ -23,6 +24,8 @@ type Props = {
   bare?: boolean;
   /** a code app threw at runtime */
   onAppError?: (error: string) => void;
+  /** 필기 mode for code apps (the ink layer inside the page) */
+  ink?: InkCmd;
 };
 
 const HAIR = C.rowLine;
@@ -37,7 +40,7 @@ function Hl({ on, children, style, inset = 6, radius = 14, accent }: { on: boole
   );
 }
 
-export function PageCanvas({ page, onChange, highlight = null, accent = C.accent, reveal, pending, scroll = true, bare, onAppError }: Props) {
+export function PageCanvas({ page, onChange, highlight = null, accent = C.accent, reveal, pending, scroll = true, bare, onAppError, ink }: Props) {
   const theme = THEMES[page.theme];
   const [w, setW] = useState(0);
   const narrow = w > 0 && w < 720;
@@ -51,7 +54,7 @@ export function PageCanvas({ page, onChange, highlight = null, accent = C.accent
     return (
       <Hl on={highlight === 'main' || highlight === 'theme'} accent={accent} inset={4} radius={31} style={{ flex: 1 }}>
         <View style={{ flex: 1, minHeight: 480, borderRadius: 28, backgroundColor: bare ? C.white : theme.card, overflow: 'hidden' }}>
-          <AppFrame key={page.id} html={app.html} state={app.state} onSave={onChange ? (state) => set({ main: { ...app, state } }) : undefined} onError={onAppError} />
+          <AppFrame key={page.id} html={app.html} state={app.state} onSave={onChange ? (state) => set({ main: { ...app, state } }) : undefined} onError={onAppError} ink={ink} />
         </View>
       </Hl>
     );

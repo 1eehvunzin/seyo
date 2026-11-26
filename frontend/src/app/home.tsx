@@ -84,8 +84,8 @@ export default function Home() {
   return (
     <Screen>
       <View style={{ flex: 1, paddingTop: 28, paddingBottom: 20, gap: 28 }}>
-        <View style={{ paddingHorizontal: pad, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          <View style={{ gap: 4 }}>
+        <View style={{ paddingHorizontal: pad, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
+          <View style={{ gap: 4, flex: 1, minWidth: 0 }}>
             <T s={14} c={C.muted}>
               {longKo(new Date())}
             </T>

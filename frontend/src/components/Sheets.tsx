@@ -166,14 +166,16 @@ export function LoginSheet({
           </Btn>
         </View>
         {onSkip && (
-          <Btn onPress={onSkip} style={{ alignItems: 'center', gap: 4, paddingVertical: 4 }}>
-            <T w={500} s={14} c={C.ink2} style={{ textDecorationLine: 'underline' }}>
-              로그인 없이 쓰기
-            </T>
+          <View style={{ gap: 8, marginTop: -16 }}>
+            <Btn onPress={onSkip} style={{ height: 54, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center' }}>
+              <T w={500} s={16}>
+                로그인 없이 쓰기
+              </T>
+            </Btn>
             <T s={12} c={C.muted} center>
               이 기기에만 저장되고, 다른 사람과 공유할 수 없어요
             </T>
-          </Btn>
+          </View>
         )}
         <T s={12} c={C.muted} lh={1.5} center>
           처음 시작할 때 만 14세 이상인지와{' '}

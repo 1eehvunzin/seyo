@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, TextInput, TextInputInstance, View } from 'react-native';
 import { AppFrame } from '@/components/AppFrame';
-import { AttachButton, AttachTray, RefStatus, refPlaceholder } from '@/components/Attach';
+import { AttachButton, AttachTray, RefHint, RefStatus, refPlaceholder } from '@/components/Attach';
 import { DevicePick } from '@/components/DevicePick';
 import { Device, deviceOf } from '@/lib/page';
 import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
@@ -126,6 +126,7 @@ export default function Start() {
 
             <View style={{ gap: 14 }}>
               <DevicePick value={device} onChange={setDevice} />
+              {!photos.length && <RefHint />}
               <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
               <RefStatus refs={refs} />
               <View style={{ minHeight: 64, borderRadius: 32, borderWidth: 1.5, borderColor: text ? C.ink : C.line, backgroundColor: C.white, flexDirection: 'row', alignItems: 'center', paddingLeft: 24, paddingRight: 8, gap: 6, shadowColor: C.ink, shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }}>
@@ -145,7 +146,7 @@ export default function Start() {
                   autoFocus={Platform.OS === 'web'}
                   style={{ flex: 1, minWidth: 0, height: 52, fontFamily: F[400], fontSize: 17, color: C.ink, ...noOutline }}
                 />
-                <AttachButton refs={refs} query={text} />
+                <AttachButton refs={refs} query={text} pin={!narrow} />
                 <IconButton name="send" label="만들기" onPress={() => make()} bg={text.trim() ? C.ink : C.line} color={C.white} size={48} iconSize={18} />
               </View>
               {!!error && (

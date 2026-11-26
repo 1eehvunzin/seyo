@@ -1,11 +1,27 @@
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StoreProvider } from '@/store';
+import { ConsentSheet } from '@/components/Sheets';
+import { StoreProvider, useStore } from '@/store';
+
+/** 만 14세 이상 + 약관 동의: once per account, on whatever screen the first login lands on. */
+function ConsentGate() {
+  const { loggedIn, me, agree, logout } = useStore();
+  return (
+    <ConsentSheet
+      visible={loggedIn && !!me && !me.agreed}
+      onAgree={agree}
+      onDecline={() => {
+        logout();
+        router.replace('/start');
+      }}
+    />
+  );
+}
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -44,6 +60,7 @@ export default function RootLayout() {
           <Stack.Screen name="page/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="generate" options={{ animation: 'slide_from_bottom' }} />
         </Stack>
+        <ConsentGate />
       </StoreProvider>
     </SafeAreaProvider>
   );

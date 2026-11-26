@@ -31,6 +31,8 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     plus_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     paywall_seen: Mapped[bool] = mapped_column(default=False)
+    # 만 14세 이상 + 약관 동의, asked once per account right after the first login
+    agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def is_plus(self) -> bool:
         if not self.plus_until:
@@ -76,6 +78,8 @@ class AiUsage(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     day: Mapped[str] = mapped_column(String, primary_key=True)  # YYYY-MM-DD (KST)
     edits: Mapped[int] = mapped_column(Integer, default=0)
+    # plus: new pages made on the stronger model (Sonnet); monthly cap, then the free model
+    smart: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class GuestUsage(Base):

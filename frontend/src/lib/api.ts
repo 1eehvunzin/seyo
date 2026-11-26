@@ -12,7 +12,7 @@ let token: string | null = null;
 /** where the app runs on the web (invite links point here) */
 const WEB = process.env.EXPO_PUBLIC_WEB_URL || 'https://app.sayitseyo.kr';
 
-export type Me = Person & { named: boolean; plus: boolean; plusUntil: string | null; paywallSeen: boolean };
+export type Me = Person & { named: boolean; plus: boolean; plusUntil: string | null; paywallSeen: boolean; agreed: boolean };
 export type ServerPage = Page & { version: number };
 
 export class ApiError extends Error {
@@ -118,6 +118,8 @@ export const api = {
   me: () => call<Me>('GET', '/me'),
   /** nickname shown to people on shared pages */
   setName: (name: string) => call<Me>('PATCH', '/me', { name }),
+  /** 만 14세 이상 + 약관 동의 (once per account) */
+  agree: () => call<Me>('PATCH', '/me', { agreed: true }),
   paywallSeen: () => call<Me>('POST', '/me/paywall-seen'),
   deleteAccount: () => call<void>('DELETE', '/me'),
 

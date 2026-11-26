@@ -351,6 +351,8 @@ _clients: dict[str, object] = {}
 
 # token spend of the current run (a list per request via contextvars, so concurrent runs don't mix)
 _usage: contextvars.ContextVar[list[dict] | None] = contextvars.ContextVar("code_usage", default=None)
+# paid (plus) users get the stronger model for new pages; everyone else runs on the free model
+_plus: contextvars.ContextVar[bool] = contextvars.ContextVar("code_plus", default=False)
 
 
 def usage() -> dict:
@@ -383,7 +385,7 @@ async def _stream(system: str, user: str, images: list[str] | None = None, edit:
     get them; repair passes don't need to look again). `edit`: a SEARCH/REPLACE edit, which runs on
     the faster edit model; new pages and full rewrites run on the main code model."""
     s = get_settings()
-    model = s.openai_code_edit_model if edit else s.openai_code_model
+    model = s.openai_code_edit_model if edit or not _plus.get() else s.openai_code_model
     if s.openai_api_key and s.ai_provider != "anthropic":
         if "openai" not in _clients:
             _clients["openai"] = openai.AsyncOpenAI(api_key=s.openai_api_key, base_url=s.openai_base_url or None, timeout=120)
@@ -554,12 +556,13 @@ def _retry_note(failed: list[str], partial: bool) -> str:
     return f"\n\n(지난번 답의 아래 블록은 형식이 깨졌거나 SEARCH가 파일에 그대로 없어서 적용하지 못했어요. 지금 파일에서 글자 그대로 복사한 짧은 SEARCH로 블록 전체를 다시 써 주세요.)\n{shown}"
 
 
-async def run(prompt: str, html: str | None, name: str | None = None, page: dict | None = None, images: list[str] | None = None) -> AsyncIterator[str]:
+async def run(prompt: str, html: str | None, name: str | None = None, page: dict | None = None, images: list[str] | None = None, plus: bool = False) -> AsyncIterator[str]:
     """Yields NDJSON events. The last one is done or error; done carries the full html and the
     tokens the run spent. `page` (with no html): rebuild that fixed-block page as a code app.
     `images`: photos attached to the request (a design reference unless the request says how to
     use them; the page can show them through {{photoN}})."""
     _usage.set([])
+    _plus.set(plus)
     images = [u for u in (images or []) if u.startswith("data:image/")][:MAX_IMAGES]
     kept: list[str] = []
     if html:

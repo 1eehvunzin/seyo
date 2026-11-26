@@ -49,7 +49,7 @@ function pack(pages: Page[], cols: number, rows: number, cell: number): { slots:
 
 /** 08 · 홈. 페이지가 넘치면 옆으로 넘긴다. (구독은 결제가 붙기 전까지 '곧 열려요') */
 export default function Home() {
-  const { pages, loggedIn, ready, plus, logout, me, setName } = useStore();
+  const { pages, loggedIn, ready, plus, logout, me, setName, markPaywallSeen } = useStore();
   /** no name from the login: ask once (this visit); or opened from the account menu */
   const [nameAsked, setNameAsked] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -64,7 +64,13 @@ export default function Home() {
   if (!ready) return null;
   if (!loggedIn) return <Redirect href="/" />;
 
-  const closePay = () => setPayOpen(false);
+  // Soft paywall, once per account, like most subscription apps: right after onboarding, once the
+  // first page exists (consent and nickname done). Later it shows only at the limits or from 계정.
+  const softPay = !!me && me.agreed && (me.named || nameAsked) && !plus && !me.paywallSeen && pages.length > 0;
+  const closePay = () => {
+    if (softPay) markPaywallSeen();
+    setPayOpen(false);
+  };
 
   const gridW = Math.max(0, area.w - pad * 2);
   const cols = gridW >= 900 ? 4 : gridW >= 560 ? 3 : 2;
@@ -122,7 +128,7 @@ export default function Home() {
       </View>
 
       <PaywallSheet
-        visible={payOpen}
+        visible={payOpen || softPay}
         onClose={closePay}
         onSubscribe={() => {
           closePay();

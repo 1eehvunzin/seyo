@@ -56,7 +56,10 @@ class Settings(BaseSettings):
     # Free plan limits. AI counts = generate + edit, KST calendar month.
     free_pages: int = 5
     free_ai_edits_per_month: int = 30  # 바이브 코딩 ≈ ₩15–25 a try → worst case ≈ ₩600 per free user per month
-    plus_ai_edits_per_month: int = 300  # fair-use cap, ≈ ₩6,000 worst case vs ₩4,900/월 (most use far less)
+    plus_ai_edits_per_month: int = 300  # fair-use cap; on Haiku ≈ ₩3 a use → ≈ ₩900 worst case
+    # plus: new pages on Sonnet (≈ ₩80–130 each at list price), then Haiku. 15 → worst case ≈ ₩2,850/월
+    # with the 300 uses above, under ₩4,900/월 and ₩39,000/년 (≈ ₩3,250/월) after the store's 15%.
+    plus_smart_creates_per_month: int = 15
     # Onboarding before login (no account): per device, lifetime, plus a per-IP daily backstop
     guest_ai_edits: int = 5
     guest_free_creates: int = 2  # onboarding first page (+ one retry) doesn't use a try

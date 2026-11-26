@@ -5,9 +5,9 @@ import { AskBar, Toast, usePageEditor } from '@/components/AskBar';
 import { FaceStack } from '@/components/Faces';
 import { MakingOverlay } from '@/components/Making';
 import { PageCanvas } from '@/components/PageCanvas';
-import { ShareSheet } from '@/components/Sheets';
+import { PaywallSheet, ShareSheet } from '@/components/Sheets';
 import { Btn, Icon, Screen, T, useLayout } from '@/components/ui';
-import { confirmAction } from '@/lib/confirm';
+import { confirmAction, notice } from '@/lib/confirm';
 import { api } from '@/lib/api';
 import { Person } from '@/lib/page';
 import { useStore } from '@/store';
@@ -16,12 +16,14 @@ import { C, F } from '@/theme';
 /** 09 · 페이지 열기 — 방장: 수정(말로 바꾸기) · 이름 바꾸기 · 초대 / 멤버: 쓰기 · 나가기 */
 export default function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getPage, patchPage, removePage, loggedIn, ready, me, refreshPage } = useStore();
+  const { getPage, patchPage, removePage, loggedIn, ready, me, refreshPage, plus } = useStore();
   const stored = getPage(id);
   const { appGutter, compact } = useLayout();
   const ed = usePageEditor(stored ?? null, ({ members: _m, inviteToken: _t, owner: _o, ...rest }) => patchPage(rest.id, rest));
   const [editing, setEditing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  /** out of this month's AI uses (free plan): the paywall opens once, then the bar says when it refills */
+  const [payClosed, setPayClosed] = useState(false);
   const [text, setText] = useState('');
   /** photos attached to the next request */
   const [photos, setPhotos] = useState<string[]>([]);
@@ -150,6 +152,15 @@ export default function PageScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <PaywallSheet
+        visible={ed.limited && !plus && !payClosed}
+        onClose={() => setPayClosed(true)}
+        onSubscribe={() => {
+          setPayClosed(true);
+          notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 다음 달 1일에 무료 횟수가 다시 채워져요.');
+        }}
+      />
 
       {isOwner && (
         <ShareSheet

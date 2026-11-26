@@ -368,7 +368,7 @@ def test_guest_first_page_is_free(client, monkeypatch):
 
     from app import code
 
-    async def fake_run(prompt, html, name=None, page=None, images=None):
+    async def fake_run(prompt, html, name=None, page=None, images=None, plus=False):
         yield _json.dumps({"t": "done", "html": "<!doctype html><html><body>x</body></html>", "summary": "만들었어요"}) + "\n"
 
     monkeypatch.setattr(code, "available", lambda: True)
@@ -448,3 +448,38 @@ def test_update_nickname(client):
     me = client.patch("/me", json={"name": "  민지  "}, headers=h).json()
     assert me["name"] == "민지" and me["named"] is True
     assert client.patch("/me", json={"name": "   "}, headers=h).status_code == 422
+
+
+def test_consent_once_per_account(client):
+    h = login(client, "consent", "현진")
+    assert client.get("/me", headers=h).json()["agreed"] is False
+    assert client.patch("/me", json={"agreed": True}, headers=h).json()["agreed"] is True
+    # logging in again on another device: the account already agreed
+    again = login(client, "consent", "현진")
+    assert client.get("/me", headers=again).json()["agreed"] is True
+
+
+def test_plus_new_pages_use_smart_model_up_to_cap(client, monkeypatch):
+    """Plus: new pages on the stronger model until the monthly cap; edits and free users never."""
+    import json as _json
+
+    from app import code
+    from app.config import get_settings
+
+    seen = []
+
+    async def fake_run(prompt, html, name=None, page=None, images=None, plus=False):
+        seen.append(plus)
+        yield _json.dumps({"t": "done", "html": "<!doctype html><html><body>x</body></html>", "summary": "만들었어요"}) + "\n"
+
+    monkeypatch.setattr(code, "available", lambda: True)
+    monkeypatch.setattr(code, "run", fake_run)
+    monkeypatch.setattr(get_settings(), "plus_smart_creates_per_month", 2)
+    h = login(client, "smart", "시현")
+    client.post("/ai/app", json={"prompt": "위클리"}, headers=h)
+    assert seen == [False]  # free user
+    client.post("/billing/dev-plus", headers=h)
+    for _ in range(3):
+        client.post("/ai/app", json={"prompt": "위클리"}, headers=h)
+    client.post("/ai/app", json={"prompt": "색 바꿔줘", "html": "<html></html>"}, headers=h)
+    assert seen == [False, True, True, False, False]  # cap of 2, then the free model; edits stay on it

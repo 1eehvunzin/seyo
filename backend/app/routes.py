@@ -37,7 +37,8 @@ def _kst_day() -> str:
 
 def _me_out(u: User) -> dict:
     # named: false when the login gave no name (the app asks for a nickname once)
-    return {**person(u), "named": bool(u.name), "plus": u.is_plus(), "plusUntil": u.plus_until.isoformat() if u.plus_until else None, "paywallSeen": u.paywall_seen}
+    # agreed: 만 14세 이상 + 약관 동의 done once for this account (asked right after the first login)
+    return {**person(u), "named": bool(u.name), "plus": u.is_plus(), "plusUntil": u.plus_until.isoformat() if u.plus_until else None, "paywallSeen": u.paywall_seen, "agreed": u.agreed_at is not None}
 
 
 # ───────── auth ─────────
@@ -115,17 +116,22 @@ def me(user: User = Depends(current_user)):
 
 
 class MePatch(BaseModel):
-    name: str = Field(min_length=1, max_length=20)
+    name: str | None = Field(None, min_length=1, max_length=20)
+    # true = 만 14세 이상이고 약관·개인정보 처리방침에 동의 (once per account)
+    agreed: bool | None = None
 
 
 @router.patch("/me", tags=["me"])
 def update_me(body: MePatch, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Nickname (shown to people on shared pages). Apple on the web and Kakao without the
-    nickname consent give none, so the app asks once after login."""
-    name = " ".join(body.name.split())
-    if not name:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "이름을 적어 주세요")
-    user.name = name
+    """Nickname (shown to people on shared pages; Apple on the web and Kakao without the
+    nickname consent give none, so the app asks once after login), and the one-time consent."""
+    if body.name is not None:
+        name = " ".join(body.name.split())
+        if not name:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "이름을 적어 주세요")
+        user.name = name
+    if body.agreed and user.agreed_at is None:
+        user.agreed_at = now()
     db.commit()
     return _me_out(user)
 
@@ -352,6 +358,21 @@ def _count_edit(db: Session, user: User) -> int:
     return limit - used - 1
 
 
+def _take_smart(db: Session, user: User) -> bool:
+    """A plus user's new page runs on the stronger model while this month's count is under the cap."""
+    month = _kst_day()[:7]
+    used = int(db.query(func.coalesce(func.sum(AiUsage.smart), 0)).filter(AiUsage.user_id == user.id, AiUsage.day.like(f"{month}-%")).scalar() or 0)
+    if used >= get_settings().plus_smart_creates_per_month:
+        return False
+    row = db.get(AiUsage, (user.id, _kst_day()))
+    if row is None:
+        row = AiUsage(user_id=user.id, day=_kst_day(), edits=0, smart=0)
+        db.add(row)
+    row.smart = (row.smart or 0) + 1
+    db.commit()
+    return True
+
+
 def _month_left(db: Session, user: User) -> int:
     left = _user_limit(user) - _month_used(db, user)
     if left <= 0:
@@ -417,6 +438,8 @@ async def ai_app(
     repair = bool(body.error and body.html)
     images = [] if repair else [u for u in body.images if u.startswith("data:image/") and len(u) <= code.MAX_IMAGE_CHARS]
     prompt = code.repair_prompt(body.error, body.html) if repair else body.prompt
+    # paid: new pages on Sonnet up to the monthly cap; edits, free and guests: Haiku
+    plus = bool(user and user.is_plus() and not repair and not body.html and _take_smart(db, user))
     if user is None:
         left, refund = _guest_take(db, request, x_device_id, free=repair, create=not body.html and not body.page)
     else:
@@ -432,7 +455,7 @@ async def ai_app(
 
     async def events():
         ok = False
-        async for line in code.run(prompt, body.html, body.name, None if body.html else body.page, images):
+        async for line in code.run(prompt, body.html, body.name, None if body.html else body.page, images, plus=plus):
             ev = json.loads(line)
             if ev["t"] == "done":
                 ok = ev.get("html") is not None

@@ -81,17 +81,10 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
   const { draft, pendingInvite } = useStore();
   const web = Platform.OS === 'web';
   const [failed, setFailed] = useState<string | null>(null);
-  /** 만 14세 이상 + 약관 동의 (required before any login) */
-  const [agreed, setAgreed] = useState(false);
-  const needAgree = () => {
-    if (agreed) return false;
-    setFailed('만 14세 이상인지, 약관에 동의하는지 먼저 체크해 주세요');
-    return true;
-  };
+  // 만 14세 이상 + 약관 동의 is asked once per account right after the first login (ConsentSheet)
   // web: out to Kakao / Apple and back to /auth/kakao, /auth/apple (the draft comes along)
   // iPad: the native Kakao SDK (KakaoTalk or Kakao account), then the server checks the token
   const kakao = async () => {
-    if (needAgree()) return;
     if (web) return startKakaoWeb(draft, pendingInvite);
     setFailed(null);
     try {
@@ -101,10 +94,9 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
       if (!isKakaoCancel(e)) setFailed('카카오 로그인을 하지 못했어요. 다시 해 주세요');
     }
   };
-  const apple = () => !needAgree() && startAppleWeb(draft, pendingInvite);
+  const apple = () => startAppleWeb(draft, pendingInvite);
   // iPad: the system Apple sheet, then the server checks the identity token
   const appleNative = async () => {
-    if (needAgree()) return;
     setFailed(null);
     try {
       const cred = await AppleAuthentication.signInAsync({ requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME] });
@@ -158,28 +150,109 @@ export function LoginSheet({ visible, onDismiss, onLogin }: { visible: boolean; 
             </T>
           </Btn>
         </View>
-        <Btn
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: agreed }}
-          onPress={() => setAgreed((v) => !v)}
-          style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 4 }}
-          readOnly
-        >
-          <View style={{ width: 20, height: 20, marginTop: 1, borderRadius: 6, borderWidth: 1.5, borderColor: agreed ? C.ink : C.dot, backgroundColor: agreed ? C.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-            {agreed && <Icon name="check" size={13} color={C.white} stroke={2.4} />}
-          </View>
-          <T s={13} c={C.ink2} lh={1.5} style={{ flex: 1 }}>
-            만 14세 이상이고,{' '}
-            <T s={13} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/terms')} accessibilityRole="link">
-              이용약관
-            </T>
-            과{' '}
-            <T s={13} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/privacy')} accessibilityRole="link">
-              개인정보 처리방침
-            </T>
-            에 동의해요
+        <T s={12} c={C.muted} lh={1.5} center>
+          처음 시작할 때 만 14세 이상인지와{' '}
+          <T s={12} c={C.sub} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/terms')} accessibilityRole="link">
+            이용약관
           </T>
-        </Btn>
+          ·
+          <T s={12} c={C.sub} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/privacy')} accessibilityRole="link">
+            개인정보 처리방침
+          </T>{' '}
+          동의를 한 번 여쭤봐요
+        </T>
+      </View>
+    </Sheet>
+  );
+}
+
+function ConsentRow({ on, set, children }: { on: boolean; set: (v: boolean) => void; children: ReactNode }) {
+  return (
+    <Btn accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => set(!on)} readOnly style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 6 }}>
+      <View style={{ width: 22, height: 22, marginTop: 1, borderRadius: 7, borderWidth: 1.5, borderColor: on ? C.ink : C.dot, backgroundColor: on ? C.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        {on && <Icon name="check" size={14} color={C.white} stroke={2.4} />}
+      </View>
+      <View style={{ flex: 1 }}>{children}</View>
+    </Btn>
+  );
+}
+
+/**
+ * 만 14세 이상 + 약관 동의, once per account: shown right after the first login (any screen) until
+ * the account agrees. Declining logs out. Accounts made before this flow agreed on the login sheet.
+ */
+export function ConsentSheet({ visible, onAgree, onDecline }: { visible: boolean; onAgree: () => Promise<void>; onDecline: () => void }) {
+  const [age, setAge] = useState(false);
+  const [terms, setTerms] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const ok = age && terms;
+  const go = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onAgree();
+    } catch {
+      setFailed('저장하지 못했어요. 다시 눌러 주세요');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet visible={visible} onDismiss={() => {}} width={460} label="시작하기 전에">
+      <View style={{ paddingTop: 44, paddingHorizontal: 40, paddingBottom: 32, gap: 28 }}>
+        <View style={{ gap: 10, alignItems: 'center' }}>
+          <T w={600} s={24} lh={1.4} ls={-0.03} center accessibilityRole="header">
+            시작하기 전에 한 번만 확인할게요
+          </T>
+          <T w={300} s={15} lh={1.6} c={C.sub} center>
+            다음부터는 묻지 않아요.
+          </T>
+        </View>
+        <View style={{ gap: 6 }}>
+          <ConsentRow on={ok} set={(v) => (setAge(v), setTerms(v))}>
+            <T w={600} s={15}>
+              모두 동의해요
+            </T>
+          </ConsentRow>
+          <View style={{ height: 1, backgroundColor: C.line, marginVertical: 4 }} />
+          <ConsentRow on={age} set={setAge}>
+            <T s={14} c={C.ink2}>
+              (필수) 만 14세 이상이에요
+            </T>
+          </ConsentRow>
+          <ConsentRow on={terms} set={setTerms}>
+            <T s={14} c={C.ink2} lh={1.5}>
+              (필수){' '}
+              <T s={14} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/terms')} accessibilityRole="link">
+                이용약관
+              </T>
+              과{' '}
+              <T s={14} c={C.ink} style={{ textDecorationLine: 'underline' }} onPress={() => showTerms('/privacy')} accessibilityRole="link">
+                개인정보 처리방침
+              </T>
+              에 동의해요
+            </T>
+          </ConsentRow>
+        </View>
+        <View style={{ gap: 8, alignItems: 'center' }}>
+          {failed && (
+            <T s={13} c={C.error} center>
+              {failed}
+            </T>
+          )}
+          <Btn onPress={go} disabled={!ok || busy} style={{ alignSelf: 'stretch', height: 54, borderRadius: 27, backgroundColor: ok ? C.ink : C.line, alignItems: 'center', justifyContent: 'center' }}>
+            <T w={500} s={16} c={C.white}>
+              {busy ? '저장하는 중…' : '동의하고 시작하기'}
+            </T>
+          </Btn>
+          <Btn onPress={onDecline} style={{ padding: 10 }}>
+            <T s={13} c={C.sub}>
+              동의하지 않고 로그아웃
+            </T>
+          </Btn>
+        </View>
       </View>
     </Sheet>
   );
@@ -197,7 +270,7 @@ const PLANS = [
   { id: 'month', name: '1개월', sub: '매달 결제', price: '₩4,900 / 월' },
 ] as const;
 
-const PERKS = ['페이지를 개수 제한 없이 만들기', '말로 만들고 고치기 월 30회 → 300회', '위젯, 모든 분위기 테마'];
+const PERKS = ['더 정교한 AI로 새 페이지 만들기 (월 15회)', '말로 만들고 고치기 월 30회 → 300회', '페이지를 개수 제한 없이 만들기'];
 
 export function PaywallSheet({ visible, onClose, onSubscribe, accent = C.accent }: { visible: boolean; onClose: () => void; onSubscribe: (plan: 'year' | 'month') => void; accent?: string }) {
   const [plan, setPlan] = useState<'year' | 'month'>('year');

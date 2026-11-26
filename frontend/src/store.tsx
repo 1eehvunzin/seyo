@@ -30,6 +30,10 @@ type Store = {
   me: Me | null;
   /** change the nickname (server first, then here) */
   setName: (name: string) => Promise<void>;
+  /** 만 14세 이상 + 약관 동의: once per account, right after the first login */
+  agree: () => Promise<void>;
+  /** the soft paywall was shown once after onboarding: don't show it on its own again */
+  markPaywallSeen: () => void;
   /**
    * After api.loginApple / api.loginKakaoCode succeeded: load the account and keep the draft as a
    * page. `draft` overrides the stored one (it came back from before a login redirect).
@@ -196,6 +200,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMe(await api.setName(name));
   }, []);
 
+  const agree = useCallback(async () => {
+    setMe(await api.agree());
+  }, []);
+
+  const markPaywallSeen = useCallback(() => {
+    setMe((m) => (m ? { ...m, paywallSeen: true } : m));
+    api.paywallSeen().catch(() => {});
+  }, []);
+
   const joinInvite = useCallback(async (t: string) => {
     const sp = await api.join(t);
     onServer.current.add(sp.id);
@@ -271,6 +284,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loggedIn,
       me,
       setName,
+      agree,
+      markPaywallSeen,
       login,
       logout,
       plus: !!me?.plus,
@@ -279,7 +294,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       joinInvite,
       refreshPage,
     }),
-    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, me, setName, login, logout, pendingInvite, joinInvite, refreshPage],
+    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, me, setName, agree, markPaywallSeen, login, logout, pendingInvite, joinInvite, refreshPage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

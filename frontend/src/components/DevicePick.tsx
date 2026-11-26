@@ -1,18 +1,18 @@
 import { View } from 'react-native';
 import { Btn, T } from '@/components/ui';
-import { Device } from '@/lib/page';
+import { SheetKind } from '@/lib/page';
 import { C } from '@/theme';
 
-const OPTIONS: { id: Device; label: string }[] = [
-  { id: 'tablet', label: '아이패드용' },
-  { id: 'phone', label: '휴대폰용' },
+const OPTIONS: { id: SheetKind; label: string }[] = [
+  { id: 'portrait', label: 'A4 세로' },
+  { id: 'landscape', label: 'A4 가로' },
 ];
 
-/** Which screen the new page is for. The AI lays the page out for it. */
-export function DevicePick({ value, onChange }: { value: Device; onChange: (d: Device) => void }) {
+/** Which way the new page's A4 sheet turns. The AI lays the page out for that fixed frame. */
+export function DevicePick({ value, onChange }: { value: SheetKind; onChange: (d: SheetKind) => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <View accessibilityRole="radiogroup" accessibilityLabel="어디서 쓸 페이지인지" style={{ flexDirection: 'row', padding: 3, borderRadius: 18, backgroundColor: C.fill }}>
+      <View accessibilityRole="radiogroup" accessibilityLabel="시트 방향" style={{ flexDirection: 'row', padding: 3, borderRadius: 18, backgroundColor: C.fill }}>
         {OPTIONS.map((o) => {
           const on = value === o.id;
           return (

@@ -16,7 +16,7 @@ import { Btn, Icon, IconButton, noOutline, Star, T, Wordmark } from './ui';
 const ORIENTATIONS = ['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right'] as const;
 
 /** Centered card over a dim scrim (iPad form-sheet feel). */
-function Sheet({ visible, onDismiss, width, label, children }: { visible: boolean; onDismiss?: () => void; width: number; label: string; children: ReactNode }) {
+export function Sheet({ visible, onDismiss, width, label, children }: { visible: boolean; onDismiss?: () => void; width: number; label: string; children: ReactNode }) {
   const y = useState(() => new Animated.Value(24))[0];
   useEffect(() => {
     if (visible) {

@@ -569,6 +569,14 @@ def _retry_note(failed: list[str], partial: bool) -> str:
 
 def _device_note(device: str | None) -> str:
     """The screen the user picked for this page."""
+    if device in ("portrait", "landscape"):
+        w, h = (794, 1123) if device == "portrait" else (1123, 794)
+        turn = "세로" if device == "portrait" else "가로"
+        return (f"\n\n(이 페이지는 A4 {turn} 시트 한 장이에요. 화면 크기는 항상 폭 {w}px × 높이 {h}px으로 고정이고(100vw={w}px, 100vh={h}px), "
+                "아이패드·휴대폰 어디서든 이 시트를 통째로 줄이거나 키워서 보여 줘요. 그러니 반응형 분기(@media)는 쓰지 말고 이 크기 하나에 맞춰 짜고, "
+                "내용이 한 장 안에 스크롤 없이 다 들어가게 해요(넘치면 칸·글자를 줄인다). 굿노트 속지처럼 여백을 두고 시트를 꽉 채우는 레이아웃. "
+                "사용자가 같은 양식의 시트를 여러 장 이어 붙여 쓸 수 있으니, 한 장 = 하루·한 주·한 과목처럼 한 단위로 만든다. "
+                "모든 입력·버튼은 그대로 눌러서 쓸 수 있어야 해요.)")
     if device == "phone":
         return ("\n\n(이 페이지는 휴대폰 세로 화면(폭 360~430px)에서 써요. 한 열로 위에서 아래로 쌓고, 7칸 표·달력은 칸을 작게 하거나 "
                 "가로로 넘기게, 누르는 곳은 44px 이상, 가로 스크롤이 생기지 않게. 아이패드용 여러 열 배치는 쓰지 않는다.)")

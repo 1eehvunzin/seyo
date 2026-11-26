@@ -3,7 +3,7 @@
  * Set EXPO_PUBLIC_API_URL (e.g. http://192.168.0.10:8000 for a device on the same Wi-Fi).
  */
 import { fetch as streamFetch } from 'expo/fetch';
-import type { Change, Page, Person } from './page';
+import type { Change, Device, Page, Person } from './page';
 import { saveToken } from './session';
 
 // an empty value (an unset CI variable) counts as not set
@@ -70,7 +70,7 @@ export type AppEvent =
  * Create (no html) or edit (html) a code app. Calls `on` for each event as it streams in;
  * resolves after the last one. Throws ApiError (402 = out of tries) before the stream starts.
  */
-async function appStream(body: { prompt: string; html?: string | null; name?: string; error?: string; page?: Page; images?: string[]; device?: 'phone' | 'tablet' }, on: (e: AppEvent) => void): Promise<void> {
+async function appStream(body: { prompt: string; html?: string | null; name?: string; error?: string; page?: Page; images?: string[]; device?: Device }, on: (e: AppEvent) => void): Promise<void> {
   const res = await streamFetch(`${BASE}/ai/app`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -147,6 +147,8 @@ export const api = {
   usage: () => call<Usage>('GET', token ? '/ai/usage' : '/ai/guest/usage'),
   loggedIn: () => token !== null,
 
+  /** 테스트용 구독: plus for a year without the App Store (server has DEV_BILLING on; 404 otherwise) */
+  devPlus: () => call<Me>('POST', '/billing/dev-plus'),
   verifyPurchase: (signedTransaction: string) => call<Me>('POST', '/billing/apple', { signed_transaction: signedTransaction }),
   registerPush: (expoPushToken: string) => call<void>('POST', '/devices', { expo_push_token: expoPushToken }),
   /** the invite link opens the web app's /join/<token> (works without the app installed) */

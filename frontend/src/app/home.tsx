@@ -49,7 +49,7 @@ function pack(pages: Page[], cols: number, rows: number, cell: number): { slots:
 
 /** 08 · 홈. 페이지가 넘치면 옆으로 넘긴다. (구독은 결제가 붙기 전까지 '곧 열려요') */
 export default function Home() {
-  const { pages, loggedIn, guest, login, ready, plus, logout, me, setName, markPaywallSeen } = useStore();
+  const { pages, loggedIn, guest, login, ready, plus, logout, me, setName, markPaywallSeen, subscribe } = useStore();
   const [loginOpen, setLoginOpen] = useState(false);
   /** no name from the login: ask once (this visit); or opened from the account menu */
   const [nameAsked, setNameAsked] = useState(false);
@@ -144,9 +144,10 @@ export default function Home() {
       <PaywallSheet
         visible={payOpen || softPay}
         onClose={closePay}
-        onSubscribe={() => {
+        onSubscribe={async () => {
           closePay();
-          notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 지금은 무료로 계속 쓸 수 있어요.');
+          if (await subscribe()) notice('seyo plus를 시작했어요', '테스트 구독이에요. 결제 없이 plus 기능을 써 볼 수 있어요.');
+          else notice('구독은 아직 열 수 없어요', '테스트 구독이 꺼져 있는 서버예요. 잠시 뒤 다시 해 주세요.');
         }}
       />
       <LoginSheet

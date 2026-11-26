@@ -84,9 +84,9 @@ export function AttachTray({
 
 /** Which references work: digital ones (app screens, Goodnotes/PDF 속지 captures) read far better
  * than photos of paper notebooks. Shown before attaching, and under the attached photos. */
-export function RefHint() {
+export function RefHint({ size = 12.5 }: { size?: number }) {
   return (
-    <T s={12.5} c={C.sub}>
+    <T s={size} c={C.sub} lh={1.5}>
       참고 사진은 손으로 쓴 노트 사진보다 앱 화면·굿노트 속지 캡처 같은 디지털 이미지가 더 잘 만들어져요
     </T>
   );

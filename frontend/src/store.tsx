@@ -48,6 +48,8 @@ type Store = {
   login: (provider: 'apple' | 'kakao', opts?: { draft?: Page | null }) => void;
   logout: () => void;
   plus: boolean;
+  /** 구독 시작하기 (no payment yet: the server's test switch turns plus on). Resolves true when plus is on. */
+  subscribe: () => Promise<boolean>;
   /** Invite link opened before login: joined right after login. */
   pendingInvite: string | null;
   setPendingInvite: (t: string | null) => void;
@@ -258,6 +260,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     api.paywallSeen().catch(() => {});
   }, []);
 
+  const subscribe = useCallback(async () => {
+    try {
+      const m = await api.devPlus();
+      setMe(m);
+      return m.plus;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const joinInvite = useCallback(async (t: string) => {
     const sp = await api.join(t);
     onServer.current.add(sp.id);
@@ -347,12 +359,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       plus: !!me?.plus,
+      subscribe,
       pendingInvite,
       setPendingInvite,
       joinInvite,
       refreshPage,
     }),
-    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, guest, enterGuest, me, setName, agree, markPaywallSeen, login, logout, pendingInvite, joinInvite, refreshPage],
+    [answers, setAnswers, draft, pages, savePage, patchPage, removePage, ready, loggedIn, guest, enterGuest, me, setName, agree, markPaywallSeen, login, logout, subscribe, pendingInvite, joinInvite, refreshPage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

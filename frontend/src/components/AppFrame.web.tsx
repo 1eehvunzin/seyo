@@ -9,19 +9,24 @@ type Slot = { key: number; doc: string };
  * Double-buffered: a new version (a streaming preview tick or a finished edit) loads in a hidden
  * frame and fades in once it has loaded, so the page never flashes white between versions.
  */
-export function AppFrame({ html, state, onSave, live, onError, ink }: AppFrameProps) {
+export function AppFrame({ html, state, onSave, live, onError, ink, sheet, onScrollBy, onPinch }: AppFrameProps) {
   const save = useRef(onSave);
   const fail = useRef(onError);
+  const scrollBy = useRef(onScrollBy);
+  const pinch = useRef(onPinch);
   useEffect(() => {
     save.current = live ? undefined : onSave;
     fail.current = live ? undefined : onError;
-  }, [live, onSave, onError]);
+    scrollBy.current = onScrollBy;
+    pinch.current = onPinch;
+  }, [live, onSave, onError, onScrollBy, onPinch]);
+  const sw = sheet?.w;
 
   // The doc only rebuilds when the code changes (with the data saved so far). Saves flow out,
   // never back in, so typing in the app doesn't reload it.
-  const [shown, setShown] = useState(() => ({ html, slots: [{ key: 0, doc: buildDoc(html, state) }] as Slot[], front: 0 }));
+  const [shown, setShown] = useState(() => ({ html, slots: [{ key: 0, doc: buildDoc(html, state, sw) }] as Slot[], front: 0 }));
   if (shown.html !== html) {
-    const next = { key: shown.slots[shown.slots.length - 1].key + 1, doc: buildDoc(html, state) };
+    const next = { key: shown.slots[shown.slots.length - 1].key + 1, doc: buildDoc(html, state, sw) };
     // keep the one on screen, replace whatever was still loading behind it
     const front = shown.slots.find((s) => s.key === shown.front)!;
     setShown({ html, slots: [front, next], front: shown.front });
@@ -37,6 +42,8 @@ export function AppFrame({ html, state, onSave, live, onError, ink }: AppFramePr
       const m = parseMsg(e.data);
       if (m?.seyo === 'save') save.current?.(m.state);
       else if (m?.seyo === 'error') fail.current?.(m.line ? `${m.message} (${m.line}번째 줄)` : m.message);
+      else if (m?.seyo === 'scroll') scrollBy.current?.(m.dy);
+      else if (m?.seyo === 'pinch') pinch.current?.(m);
     };
     window.addEventListener('message', on);
     return () => window.removeEventListener('message', on);
@@ -66,10 +73,14 @@ export function AppFrame({ html, state, onSave, live, onError, ink }: AppFramePr
           onLoad: () => loaded(s.key),
           style: {
             position: 'absolute',
-            inset: 0,
+            left: 0,
+            top: 0,
             border: 0,
-            width: '100%',
-            height: '100%',
+            // an A4 sheet is laid out at its real size and scaled down (or up) to the frame
+            width: sheet ? sheet.w : '100%',
+            height: sheet ? sheet.h : '100%',
+            transform: sheet ? `scale(${sheet.k})` : undefined,
+            transformOrigin: '0 0',
             background: 'transparent',
             display: 'block',
             opacity: s.key === shown.front ? 1 : 0,

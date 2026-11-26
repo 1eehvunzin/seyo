@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, TextInput, TextInputInstance, View } from 'react-native';
-import { AppFrame } from '@/components/AppFrame';
+import { LiveApp } from '@/components/SheetStack';
 import { AttachButton, AttachTray, RefHint, RefStatus, refPlaceholder } from '@/components/Attach';
 import { DevicePick } from '@/components/DevicePick';
-import { Device, deviceOf } from '@/lib/page';
+import { SheetKind } from '@/lib/page';
 import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
 import { PageSkeleton } from '@/components/Making';
 import { Btn, IconButton, noOutline, Screen, Star, T, useLayout } from '@/components/ui';
@@ -16,7 +16,7 @@ import { useStore } from '@/store';
 import { C, F } from '@/theme';
 
 /** Example asks: the same voice as the landing's speech bubbles. */
-const EXAMPLES = ['시험기간 공부 플래너 만들어 주세요', '독서기록장, 문장 수집도 되게 해주세요', '최애 생일 캘린더 만들어 주세요', '매일 물 마시기랑 스트레칭 체크표'];
+const EXAMPLES = ['시험기간 공부 플래너 만들어 주세요', '독서기록장, 문장 수집도 되게 해주세요', '최애 생일 캘린더 만들어 주세요'];
 
 /**
  * 02 · 온보딩: 한 줄 말하면 첫 페이지가 생겨요.
@@ -29,8 +29,8 @@ export default function Start() {
   const { setDraft } = useStore();
   const { gutter, width, height } = useLayout();
   const [text, setText] = useState('');
-  /** the screen the first page is for: this device's kind unless the user picks the other */
-  const [device, setDevice] = useState<Device>(() => deviceOf(width));
+  /** the first page's A4 sheet: 세로 unless the user turns it */
+  const [device, setDevice] = useState<SheetKind>('portrait');
   const [asked, setAsked] = useState<string | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +89,7 @@ export default function Start() {
             </T>
           </View>
           <View style={{ flex: 1, borderRadius: 28, backgroundColor: C.white, borderWidth: 1, borderColor: C.line, overflow: 'hidden' }}>
-            {live?.html ? <AppFrame html={live.html} state={{}} live /> : <PageSkeleton label={liveLabel(live, false)} />}
+            {live?.html ? <LiveApp html={live.html} device={device} /> : <PageSkeleton label={liveLabel(live, false)} />}
           </View>
           {!!live?.html && (
             <T s={13.5} c={C.sub} center accessibilityLiveRegion="polite">
@@ -113,20 +113,17 @@ export default function Start() {
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: gutter, paddingVertical: 32 }} keyboardShouldPersistTaps="handled">
-          <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', gap: height < 700 ? 24 : 36 }}>
+          <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', gap: height < 700 ? 24 : 32 }}>
             <View style={{ gap: 14 }}>
-              <Star size={56} fill={C.star} />
+              <Star size={40} fill={C.star} />
               <T w={600} s={narrow ? 30 : 40} lh={1.25} ls={-0.035} accessibilityRole="header">
                 {'딱 맞는 페이지가 없다면,\n그냥 말하세요'}
               </T>
-              <T s={16} c={C.sub} lh={1.5}>
-                한 줄이면 충분해요. 만든 뒤에도 말로 계속 바꿀 수 있어요.
-              </T>
+              <RefHint size={15} />
             </View>
 
             <View style={{ gap: 14 }}>
               <DevicePick value={device} onChange={setDevice} />
-              {!photos.length && <RefHint />}
               <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
               <RefStatus refs={refs} />
               <View style={{ minHeight: 64, borderRadius: 32, borderWidth: 1.5, borderColor: text ? C.ink : C.line, backgroundColor: C.white, flexDirection: 'row', alignItems: 'center', paddingLeft: 24, paddingRight: 8, gap: 6, shadowColor: C.ink, shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }}>

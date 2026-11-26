@@ -3,11 +3,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Image, Platform, ScrollView, TextInput, View, ViewStyle } from 'react-native';
 import { addDays, dday, parseLooseDate, shortEn, WEEK_KO, weekdayIndex } from '@/lib/date';
-import { Change, LogField, Main, Page, Todo, uid } from '@/lib/page';
+import { Change, isSheet, LogField, Main, Page, Todo, uid } from '@/lib/page';
 import { nextClass, TIMETABLE_DAYS, TIMETABLE_PERIODS } from '@/lib/timetable';
 import { C, F, THEMES, TIMETABLE } from '@/theme';
 import { InkCmd } from '@/lib/appdoc';
 import { AppFrame } from './AppFrame';
+import { SheetStack } from './SheetStack';
 import { Btn, Chip, Icon, IconButton, Star, T } from './ui';
 
 type Props = {
@@ -51,6 +52,26 @@ export function PageCanvas({ page, onChange, highlight = null, accent = C.accent
   // 바이브 코딩 app: the AI-written code fills the card; it keeps its own data in main.state
   if (page.main.kind === 'app') {
     const app = page.main;
+    if (isSheet(page.device)) {
+      const more = app.more ?? [];
+      return (
+        <Hl on={highlight === 'main' || highlight === 'theme'} accent={accent} inset={4} radius={31} style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 360, borderRadius: 28, backgroundColor: bare ? C.fill : theme.card, overflow: 'hidden' }}>
+            <SheetStack
+              key={page.id}
+              kind={page.device}
+              html={app.html}
+              states={[app.state, ...more]}
+              onSave={onChange ? (i, state) => set({ main: i === 0 ? { ...app, state } : { ...app, more: more.map((m, j) => (j === i - 1 ? state : m)) } }) : undefined}
+              onAdd={onChange && !bare ? () => set({ main: { ...app, more: [...more, {}] } }) : undefined}
+              onRemove={onChange ? (i) => set({ main: { ...app, more: more.filter((_, j) => j !== i - 1) } }) : undefined}
+              onError={onAppError}
+              ink={ink}
+            />
+          </View>
+        </Hl>
+      );
+    }
     return (
       <Hl on={highlight === 'main' || highlight === 'theme'} accent={accent} inset={4} radius={31} style={{ flex: 1 }}>
         <View style={{ flex: 1, minHeight: 480, borderRadius: 28, backgroundColor: bare ? C.white : theme.card, overflow: 'hidden' }}>

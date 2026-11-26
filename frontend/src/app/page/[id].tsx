@@ -11,26 +11,36 @@ import { confirmAction, notice } from '@/lib/confirm';
 import { api } from '@/lib/api';
 import { InkCmd } from '@/lib/appdoc';
 import { pickPhotos } from '@/lib/attach';
-import { deviceOf, Person } from '@/lib/page';
-import { InkBar } from '@/components/InkBar';
+import { deviceOf, isSheet, Person } from '@/lib/page';
+import { DEFAULT_INK, InkBar } from '@/components/InkBar';
 import { useStore } from '@/store';
 import { C, F } from '@/theme';
 
 /** 09 · 페이지 열기 — 방장: 수정(말로 바꾸기) · 이름 바꾸기 · 초대 / 멤버: 쓰기 · 나가기 */
 export default function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getPage, patchPage, removePage, loggedIn, guest, login, ready, me, refreshPage, plus } = useStore();
+  const { getPage, patchPage, removePage, loggedIn, guest, login, ready, me, refreshPage, plus, subscribe } = useStore();
   const stored = getPage(id);
   const { appGutter, compact, width } = useLayout();
   /** this page was made for the other kind of screen and the user hasn't said to keep it */
   const [deviceOk, setDeviceOk] = useState(false);
   /** 입력 (typing, the page's own controls) or 필기 (pen, highlighter, photos on top of the page) */
-  const [ink, setInk] = useState<InkCmd>({ tool: 'off', color: '#1d1d1f', seq: 0 });
+  const [ink, setInk] = useState<InkCmd>({ tool: 'off', color: DEFAULT_INK.pen, seq: 0 });
+  /** each colored tool keeps its own color */
+  const [inkColors, setInkColors] = useState(DEFAULT_INK);
   const drawing = ink.tool !== 'off';
-  const inkTool = (tool: InkCmd['tool'], color?: string) => setInk((k) => ({ tool, color: color ?? k.color, seq: k.seq }));
+  const toolColor = (tool: InkCmd['tool'], c = inkColors) => (tool === 'marker' ? c.marker : c.pen);
+  const inkTool = (tool: InkCmd['tool']) => setInk((k) => ({ tool, color: toolColor(tool), seq: k.seq }));
+  const inkColor = (color: string) => {
+    if (ink.tool !== 'pen' && ink.tool !== 'marker') return;
+    const tool = ink.tool;
+    setInkColors((c) => ({ ...c, [tool]: color }));
+    setInk((k) => ({ ...k, color }));
+  };
   const inkPhoto = async () => {
     const [url] = await pickPhotos(1);
-    if (url) setInk((k) => ({ tool: 'move', color: k.color, seq: k.seq + 1, image: url }));
+    // a new photo comes in selected under the lasso, ready to move and resize
+    if (url) setInk((k) => ({ tool: 'lasso', color: k.color, seq: k.seq + 1, image: url }));
   };
   const inkUndo = () => setInk((k) => ({ tool: k.tool, color: k.color, seq: k.seq + 1, undo: true }));
   const ed = usePageEditor(stored ?? null, ({ members: _m, inviteToken: _t, owner: _o, ...rest }) => patchPage(rest.id, rest));
@@ -175,7 +185,7 @@ export default function PageScreen() {
             <Toast toast={ed.toast} onUndo={ed.undo} />
           </View>
 
-          {drawing && <InkBar tool={ink.tool} color={ink.color} onTool={inkTool} onPhoto={inkPhoto} onUndo={inkUndo} />}
+          {drawing && <InkBar tool={ink.tool} colors={inkColors} onTool={inkTool} onColor={inkColor} onPhoto={inkPhoto} onUndo={inkUndo} />}
 
           {editing && isOwner && !drawing && (
             <View style={{ gap: 8 }}>
@@ -200,7 +210,8 @@ export default function PageScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {page.main.kind === 'app' && (
+      {/* older pages were made for a phone or an iPad; A4 sheets fit any screen */}
+      {page.main.kind === 'app' && !isSheet(page.device) && (
         <DeviceSheet
           visible={!deviceOk && !ed.busy && (page.device ?? 'tablet') !== deviceOf(width)}
           made={page.device ?? 'tablet'}
@@ -220,9 +231,12 @@ export default function PageScreen() {
       <PaywallSheet
         visible={loggedIn && ed.limited && !plus && !payClosed}
         onClose={() => setPayClosed(true)}
-        onSubscribe={() => {
+        onSubscribe={async () => {
           setPayClosed(true);
-          notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 다음 달 1일에 무료 횟수가 다시 채워져요.');
+          if (await subscribe()) {
+            ed.recheck();
+            notice('seyo plus를 시작했어요', '테스트 구독이에요. 결제 없이 plus 기능을 써 볼 수 있어요.');
+          } else notice('구독은 아직 열 수 없어요', '테스트 구독이 꺼져 있는 서버예요. 잠시 뒤 다시 해 주세요.');
         }}
       />
 

@@ -7,14 +7,14 @@ import { Btn, Icon, IconButton, noOutline, Screen, T, useLayout } from '@/compon
 import { WidgetView } from '@/components/WidgetView';
 import { confirmAction, notice } from '@/lib/confirm';
 import { ApiError } from '@/lib/api';
-import { followUpWithAi, planFromPrompt, PROMPT_EXAMPLES, TEMPLATES } from '@/lib/generate';
+import { followUpWithAi, planFromPrompt, TEMPLATES } from '@/lib/generate';
 import { appPage, Live, liveLabel, repairApp, runApp } from '@/lib/vibecode';
-import { AppFrame } from '@/components/AppFrame';
+import { LiveApp } from '@/components/SheetStack';
 import { AttachButton, AttachTray, PinterestChip, RefHint, RefStatus, refPlaceholder } from '@/components/Attach';
 import { DevicePick } from '@/components/DevicePick';
 import { MAX_ATTACH, usePastePhotos, useReferences } from '@/lib/attach';
 import { MakingOverlay, PageSkeleton } from '@/components/Making';
-import { Device, deviceOf, Page } from '@/lib/page';
+import { Page, SheetKind } from '@/lib/page';
 import { describeWidget, widgetOptions } from '@/lib/widget';
 import { useStore } from '@/store';
 import { C, F } from '@/theme';
@@ -27,7 +27,7 @@ type Step = { key: string; text: string };
 
 /** 10 · 말로 새 페이지 만들기 */
 export default function Generate() {
-  const { savePage, pages, plus } = useStore();
+  const { savePage, pages, plus, subscribe } = useStore();
   const { width, height } = useLayout();
   // Split View / narrow windows stack the chat above the preview instead of squeezing two columns
   const stacked = width < 700;
@@ -38,8 +38,8 @@ export default function Generate() {
   const [page, setPage] = useState<Page | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
   const [text, setText] = useState('');
-  /** the screen the new page is for: this device's kind unless the user picks the other */
-  const [device, setDevice] = useState<Device>(() => deviceOf(width));
+  /** the new page's A4 sheet: 세로 unless the user turns it */
+  const [device, setDevice] = useState<SheetKind>('portrait');
   const [optIdx, setOptIdx] = useState(0);
   const [payOpen, setPayOpen] = useState(false);
   /** waiting for the model (first page or a follow-up) */
@@ -228,9 +228,7 @@ export default function Generate() {
                   <T s={15} lh={1.6}>
                     어떤 페이지가 필요해요?{'\n'}말하는 대로 만들어 드릴게요.
                   </T>
-                  <T s={13.5} lh={1.6} c={C.muted}>
-                    예: {PROMPT_EXAMPLES[0]}
-                  </T>
+                  <RefHint size={13.5} />
                 </View>
               )}
 
@@ -287,8 +285,8 @@ export default function Generate() {
                 </T>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {followUps.map((f) => (
-                    <Btn key={f} disabled={thinking} onPress={() => send(f)} style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }}>
-                      <T s={13.5}>{f}</T>
+                    <Btn key={f} disabled={thinking} onPress={() => send(f)} style={{ minHeight: 34, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 17, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }}>
+                      <T s={13}>{f}</T>
                     </Btn>
                   ))}
                 </View>
@@ -300,7 +298,6 @@ export default function Generate() {
               {!page && <DevicePick value={device} onChange={setDevice} />}
               {!thinking && !building && !text.trim() && !photos.length && <PinterestChip refs={refs} query={page?.name || ''} />}
             </View>
-            {!page && !photos.length && <RefHint />}
             <AttachTray photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, k) => k !== i))} />
             <RefStatus refs={refs} />
             <View style={{ height: 56, borderRadius: 28, borderWidth: 1, borderColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 20, paddingRight: 6 }}>
@@ -338,7 +335,7 @@ export default function Generate() {
                   </T>
                 </View>
                 <View style={{ height: Math.max(480, height - 140), borderRadius: 28, backgroundColor: C.white, borderWidth: 1, borderColor: C.hair, overflow: 'hidden' }}>
-                  {live?.html ? <AppFrame html={live.html} state={{}} live /> : <PageSkeleton label={liveLabel(live, false)} />}
+                  {live?.html ? <LiveApp html={live.html} device={device} /> : <PageSkeleton label={liveLabel(live, false)} />}
                 </View>
               </View>
             ) : !page ? (
@@ -374,7 +371,7 @@ export default function Generate() {
 
                 {page.main.kind === 'app' ? (
                   <View style={{ height: Math.max(480, height - 220) }}>
-                    {live?.html ? <AppFrame html={live.html} state={{}} live /> : <PageCanvas page={page} onChange={setPage} bare onAppError={onAppError} />}
+                    {live?.html ? <LiveApp html={live.html} device={page.device} /> : <PageCanvas page={page} onChange={setPage} bare onAppError={onAppError} />}
                     <MakingOverlay on={thinking && !live?.html} live={live} />
                   </View>
                 ) : (
@@ -417,9 +414,10 @@ export default function Generate() {
       <PaywallSheet
         visible={payOpen}
         onClose={() => setPayOpen(false)}
-        onSubscribe={() => {
+        onSubscribe={async () => {
           setPayOpen(false);
-          notice('구독은 곧 열려요', '결제가 준비되는 대로 알려 드릴게요. 지금은 무료로 계속 쓸 수 있어요.');
+          if (await subscribe()) notice('seyo plus를 시작했어요', '테스트 구독이에요. 결제 없이 plus 기능을 써 볼 수 있어요.');
+          else notice('구독은 아직 열 수 없어요', '테스트 구독이 꺼져 있는 서버예요. 잠시 뒤 다시 해 주세요.');
         }}
       />
     </Screen>

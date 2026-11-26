@@ -422,7 +422,7 @@ class AppIn(BaseModel):
     # photos attached to the request (shrunk JPEG data URLs): a design reference by default
     images: list[str] = Field(default_factory=list, max_length=code.MAX_IMAGES)
     # the screen this page is made for (the user picks it when making the page)
-    device: Literal["phone", "tablet"] | None = None
+    device: Literal["portrait", "landscape", "phone", "tablet"] | None = None
 
 
 @router.post("/ai/app", tags=["ai"])

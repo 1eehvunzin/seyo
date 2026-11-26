@@ -30,16 +30,21 @@ export function usePageEditor(initial: Page | null, onCommit?: (p: Page) => void
   /** automatic repairs in a row (a fix that breaks again gets one more try, then stop) */
   const repairChain = useRef(0);
 
-  useEffect(() => {
-    let live = true;
+  const alive = useRef(true);
+  /** this month's tries from the server (again after subscribing: plus has more) */
+  const recheck = useCallback(() => {
     api
       .usage()
-      .then((u) => live && (setLeft(u.left), setLimited(u.left <= 0)))
+      .then((u) => alive.current && (setLeft(u.left), setLimited(u.left <= 0)))
       .catch(() => {}); // offline: rules only, no count to show
-    return () => {
-      live = false;
-    };
   }, []);
+  useEffect(() => {
+    alive.current = true;
+    recheck();
+    return () => {
+      alive.current = false;
+    };
+  }, [recheck]);
 
   const flash = (text: string, undo: boolean) => {
     setToast({ text, undo });
@@ -170,7 +175,7 @@ export function usePageEditor(initial: Page | null, onCommit?: (p: Page) => void
     setToast(null);
   };
 
-  return { page, update, say, undo, repair, change, toast, busy, live, left, limited, changed: history.length > 0, progress: busy && (page?.main.kind === 'app' || live) ? liveLabel(live, page?.main.kind === 'app') : null };
+  return { page, update, say, undo, repair, recheck, change, toast, busy, live, left, limited, changed: history.length > 0, progress: busy && (page?.main.kind === 'app' || live) ? liveLabel(live, page?.main.kind === 'app') : null };
 }
 
 export function Toast({ toast, onUndo }: { toast: { text: string; undo: boolean } | null; onUndo: () => void }) {

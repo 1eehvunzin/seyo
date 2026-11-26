@@ -10,21 +10,27 @@ type Slot = { key: number; doc: string; fade: Animated.Value };
  * Double-buffered like the web frame: a new version loads in a hidden WebView and fades in once
  * it has loaded, so streaming previews and finished edits don't flash.
  */
-export function AppFrame({ html, state, onSave, live, onError, ink }: AppFrameProps) {
+export function AppFrame({ html, state, onSave, live, onError, ink, sheet, onScrollBy, onPinch }: AppFrameProps) {
   const save = useRef(onSave);
   const views = useRef(new Map<number, { injectJavaScript: (js: string) => void }>());
   const fail = useRef(onError);
+  const scrollBy = useRef(onScrollBy);
+  const pinch = useRef(onPinch);
   useEffect(() => {
     save.current = live ? undefined : onSave;
     fail.current = live ? undefined : onError;
-  }, [live, onSave, onError]);
+    scrollBy.current = onScrollBy;
+    pinch.current = onPinch;
+  }, [live, onSave, onError, onScrollBy, onPinch]);
+  // an A4 sheet: laid out at its real width; the WebView scales it to fit its frame
+  const sw = sheet?.w;
 
   // The doc only rebuilds when the code changes (with the data saved so far). Saves flow out,
   // never back in, so typing in the app doesn't reload it.
-  const [shown, setShown] = useState(() => ({ html, slots: [{ key: 0, doc: buildDoc(html, state), fade: new Animated.Value(1) }] as Slot[], front: 0 }));
+  const [shown, setShown] = useState(() => ({ html, slots: [{ key: 0, doc: buildDoc(html, state, sw), fade: new Animated.Value(1) }] as Slot[], front: 0 }));
   if (shown.html !== html) {
     const front = shown.slots.find((s) => s.key === shown.front)!;
-    const next = { key: shown.slots[shown.slots.length - 1].key + 1, doc: buildDoc(html, state), fade: new Animated.Value(0) };
+    const next = { key: shown.slots[shown.slots.length - 1].key + 1, doc: buildDoc(html, state, sw), fade: new Animated.Value(0) };
     setShown({ html, slots: [front, next], front: shown.front });
   }
   const newest = shown.slots[shown.slots.length - 1].key;
@@ -62,9 +68,13 @@ export function AppFrame({ html, state, onSave, live, onError, ink }: AppFramePr
               const m = parseMsg(e.nativeEvent.data);
               if (m?.seyo === 'save') save.current?.(m.state);
               else if (m?.seyo === 'error') fail.current?.(m.line ? `${m.message} (${m.line}번째 줄)` : m.message);
+              else if (m?.seyo === 'scroll') scrollBy.current?.(m.dy);
+      else if (m?.seyo === 'pinch') pinch.current?.(m);
             }}
             javaScriptEnabled
-            scrollEnabled
+            // a sheet doesn't scroll on its own: the stack of sheets around it does
+            scrollEnabled={!sheet}
+            scalesPageToFit={!!sheet}
             keyboardDisplayRequiresUserAction={false}
             style={{ flex: 1, backgroundColor: 'transparent' }}
           />

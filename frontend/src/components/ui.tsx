@@ -108,7 +108,7 @@ export function BrandBg({ style }: { style?: StyleProp<ViewStyle> }) {
   );
 }
 
-type IconName = 'back' | 'check' | 'plus' | 'close' | 'pencil' | 'send' | 'camera' | 'play' | 'pause' | 'reset' | 'bell' | 'share' | 'image' | 'external';
+type IconName = 'back' | 'check' | 'plus' | 'close' | 'pencil' | 'send' | 'camera' | 'play' | 'pause' | 'reset' | 'bell' | 'share' | 'image' | 'external' | 'pen' | 'highlighter' | 'eraser' | 'lasso' | 'undo';
 
 export function Icon({ name, size = 22, color = C.ink, stroke = 1.6 }: { name: IconName; size?: number; color?: string; stroke?: number }) {
   const p = { fill: 'none', stroke: color, strokeWidth: stroke, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -130,6 +130,37 @@ export function Icon({ name, size = 22, color = C.ink, stroke = 1.6 }: { name: I
       {name === 'pause' && <Path d="M9 5v14M15 5v14" {...p} />}
       {name === 'reset' && <Path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" {...p} />}
       {name === 'bell' && <Path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20h4" {...p} />}
+      {name === 'pen' && (
+        <>
+          <Path d="M5 19l1.2-4.2L15.6 5.4a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L9.2 17.8z" {...p} />
+          <Path d="M13.8 7.2l3 3" {...p} />
+        </>
+      )}
+      {name === 'highlighter' && (
+        <>
+          <Path d="M9 14.5l7.2-9.6a1.6 1.6 0 0 1 2.3-.3l1.2 1a1.6 1.6 0 0 1 .2 2.3L12 15.6z" {...p} />
+          <Path d="M9 14.5l-1.6 3.2 1.4 1.2 3.2-3.3" {...p} />
+          <Path d="M4 20.5h7" {...p} />
+        </>
+      )}
+      {name === 'eraser' && (
+        <>
+          <Path d="M8.5 19.5L4.7 15.7a1.6 1.6 0 0 1 0-2.3l8.7-8.7a1.6 1.6 0 0 1 2.3 0l3.6 3.6a1.6 1.6 0 0 1 0 2.3L11 19.5z" {...p} />
+          <Path d="M8.8 9.3l5.9 5.9M11 19.5h9" {...p} />
+        </>
+      )}
+      {name === 'lasso' && (
+        <>
+          <Path d="M12 4.5c4.4 0 8 2.3 8 5.2s-3.6 5.2-8 5.2-8-2.3-8-5.2 3.6-5.2 8-5.2z" {...p} strokeDasharray="2.6 2.6" />
+          <Path d="M7.6 14c-.9 1.4-.6 3 1 3.3 1.5.3 1.9 1.6 1 3.2" {...p} />
+        </>
+      )}
+      {name === 'undo' && (
+        <>
+          <Path d="M8.5 13.5L4 9l4.5-4.5" {...p} />
+          <Path d="M4 9h10a5.5 5.5 0 0 1 0 11h-3" {...p} />
+        </>
+      )}
       {name === 'external' && <Path d="M7 17L17 7M8.5 7H17v8.5" {...p} />}
       {name === 'image' && (
         <>

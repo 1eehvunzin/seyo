@@ -46,7 +46,13 @@ export type Main =
     }
   | { kind: 'timetable' }
   /** 바이브 코딩: an HTML/JS app the AI wrote. `state` is what the app saved with seyo.save(). */
-  | { kind: 'app'; html: string; state: Record<string, unknown> };
+  | {
+      kind: 'app';
+      html: string;
+      state: Record<string, unknown>;
+      /** A4 pages: the 2nd, 3rd… sheet, each the same layout with its own data (sheet 1 is `state`) */
+      more?: Record<string, unknown>[];
+    };
 
 export type Side = 'timetable' | 'week' | null;
 
@@ -59,13 +65,21 @@ export type Widget = { size: 'small' | 'large'; templates: WidgetTpl[] };
 
 export type Person = { id: string; name: string; initial: string; bg: string };
 
-/** the screen a page is made for (the user picks it when making the page) */
-export type Device = 'phone' | 'tablet';
-/** phones (and very narrow windows) vs iPad / desktop */
-export const deviceOf = (width: number): Device => (width < 700 ? 'phone' : 'tablet');
+/**
+ * What a page is laid out for. New pages are an A4 sheet (세로 / 가로) of fixed size, shown scaled
+ * to fit on any screen, so the AI always designs for one known frame. Older pages were made for a
+ * phone or an iPad and still fill the screen as before.
+ */
+export type Device = 'portrait' | 'landscape' | 'phone' | 'tablet';
+export type SheetKind = 'portrait' | 'landscape';
+/** A4 at 96 css px per inch */
+export const SHEET: Record<SheetKind, { w: number; h: number }> = { portrait: { w: 794, h: 1123 }, landscape: { w: 1123, h: 794 } };
+export const isSheet = (d: Device | undefined): d is SheetKind => d === 'portrait' || d === 'landscape';
+/** phones (and very narrow windows) vs iPad / desktop (older pages) */
+export const deviceOf = (width: number): 'phone' | 'tablet' => (width < 700 ? 'phone' : 'tablet');
 
 export type Page = {
-  /** made for a phone or an iPad; older pages have none (treated as iPad) */
+  /** an A4 sheet (세로/가로); older pages: made for a phone or an iPad, or none (treated as iPad) */
   device?: Device;
   widget: Widget;
   /** null = I made it (방장). Otherwise I was invited (멤버). */

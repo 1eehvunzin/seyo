@@ -23,14 +23,13 @@ keywords: [최애, 아이돌, 덕질, 생일, 생카, 생일카페, 포카, 포�
 
 ## 색과 장식
 - 멤버 컬러를 강조색으로 쓰고 나머지는 연한 톤으로. 하트·별·반짝이·리본 SVG, `.sticker`로 "D-day", "♡".
-- 기본 테마는 `theme-pastel`(사용자가 다른 분위기를 말하면 그걸 따른다).
+- 기본은 플레인·미니멀(흰 바탕, 멤버 컬러는 점·하트 같은 작은 표시에만). 꾸며 달라고 하면 style 스킬을 따른다.
 
 ## 최애 생일 캘린더 뼈대 (출발점)
 ```html
-<body class="theme-pastel">
+<body>
 <main class="app">
-  <section class="card" id="next" style="background:var(--accent-soft);text-align:center;padding:28px">
-    <span class="sticker" style="position:absolute;top:-12px;right:18px">♡ D-12</span>
+  <section class="card" id="next" style="text-align:center;padding:28px">
     <!-- 다음 생일: 원형 사진(없으면 이니셜) · "○○ 생일까지" · 큰 D-day · 날짜. 아무도 없으면 "최애를 등록해 주세요" + 등록 버튼 -->
   </section>
   <section class="card">

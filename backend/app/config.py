@@ -45,7 +45,11 @@ class Settings(BaseSettings):
     openai_edit_reasoning: str = "low"
     claude_edit_model: str = "claude-haiku-5-5"
     # 바이브 코딩 (HTML 앱 생성/수정, streamed). Speed matters most: small model, minimal reasoning.
-    openai_code_model: str = "gpt-5.4-mini"  # measured fastest: ~600 chars/s, a new app in ~15s
+    # Claude Sonnet 5.5 via the reseller (OpenAI-compatible): far better UI/layout than gpt-5.4-mini
+    # (follows reference layouts, correct calendars); ~30s for a new page vs ~15s.
+    openai_code_model: str = "claude-sonnet-5-5"
+    # 말로 고치기 (SEARCH/REPLACE edits): small and fast, so an edit stays at a few seconds
+    openai_code_edit_model: str = "claude-haiku-5-5"
     openai_code_reasoning: str = "none"
     claude_code_model: str = "claude-haiku-5-5"
 

@@ -4,7 +4,7 @@ keywords: [위클리, 먼슬리, 데일리, 플래너, 주간, 월간, 일간, �
 ---
 # 플래너 속지 스킬 (위클리 · 먼슬리 · 스터디 플래너)
 
-학생들이 굿노트에서 실제로 많이 쓰는 속지 구성이다. 요청한 종류의 뼈대를 그대로 따르고, 스타일은 style 스킬/테마로 입힌다.
+학생들이 굿노트에서 실제로 많이 쓰는 속지 구성이다. 요청한 종류의 뼈대를 그대로 따른다. **기본은 플레인·미니멀**(흰 바탕, 얇은 선, 검정 강조, 과목 색만 파스텔). 테이프·스티커·테마는 사용자가 꾸며 달라고 할 때만 style 스킬로.
 
 요청에 '위클리/주간'이 있으면 반드시 아래 7일 위클리 뼈대로 만든다. 시험기간이면 그 위클리 안에 D-day 스티커와 과목 색 태그를 더한다(스터디 플래너로 바꾸지 않는다). '스터디 플래너/오늘 공부'만 있으면 스터디 플래너 구성.
 
@@ -27,17 +27,17 @@ keywords: [위클리, 먼슬리, 데일리, 플래너, 주간, 월간, 일간, �
 
 ## 공통
 - 빈 상태도 속지처럼: 줄이나 점선 칸이 미리 그려져 있어 바로 쓰고 싶게. "할 일을 추가해 보세요" 문구만 덩그러니 두지 않는다.
-- 체크하면 줄 긋기 + 살짝 흐리게, 하루 다 하면 작은 축하(스탬프 "완료!").
+- 체크하면 줄 긋기 + 살짝 흐리게, 하루 다 하면 날짜 옆에 작은 완료 표시.
 
 ## 위클리 뼈대 (출발점: 클래스와 배치는 유지하고 내용·기능만 요청대로)
 ```html
-<body class="theme-pastel">
+<body>
 <main class="app">
   <header class="between">
     <div class="stack" style="gap:2px"><span class="label" id="range"></span><h1 class="title">이번 주</h1></div>
     <div class="row"><button class="icon-btn" id="prev" aria-label="지난주">‹</button><button class="icon-btn" id="next" aria-label="다음 주">›</button></div>
   </header>
-  <section class="card paper-dot"><i class="tape left"></i>
+  <section class="card">
     <p class="label">이번 주 목표</p><div class="list" id="goals"></div>
   </section>
   <section class="week" id="week"></section><!-- 7 × .day-col -->

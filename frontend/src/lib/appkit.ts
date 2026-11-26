@@ -71,7 +71,7 @@ body.theme-pastel{--bg:#fff8fb;--card:#fff;--fill:#fdf0f5;--line:#f5dde7;--accen
 body.theme-kitsch{--bg:#fff;--card:#fff;--fill:#ffe8f3;--line:#1d1d1f;--accent:#ff4fa0;--accent-2:#6c63ff;--accent-soft:#ffd1e8;--r:16px;background:repeating-conic-gradient(#ffe1ef 0 25%,#fff 0 50%) 0 0/28px 28px}
 body.theme-kitsch .card{box-shadow:0 0 0 2px #1d1d1f,4px 4px 0 #1d1d1f}
 body.theme-ribbon{--bg:#fff6f7;--card:#fffdfd;--fill:#fbeef0;--line:#f0d7dc;--accent:#d98aa0;--accent-2:#c9b6e4;--accent-soft:#f9e1e7;--r:20px}
-body.theme-ribbon h1,body.theme-ribbon h2,body.theme-ribbon .title{font-family:Georgia,"AppleMyungjo","Nanum Myeongjo",serif;font-weight:500}
+body.theme-ribbon h1,body.theme-ribbon h2,body.theme-ribbon .title{font-weight:600;letter-spacing:-.02em}
 body.theme-retro{--bg:#f3eadb;--card:#fbf6ec;--fill:#efe4d2;--line:#e0d2bb;--ink:#3b3026;--sub:#7a6a58;--accent:#c4643c;--accent-2:#6f8f6a;--accent-soft:#f1d9c9;--r:8px}
 body.theme-notion{--bg:#fff;--card:#fff;--fill:#f7f6f3;--line:#ebeae6;--ink:#37352f;--sub:#787774;--accent:#2f80ed;--accent-2:#9065b0;--accent-soft:#e7f0fd;--r:6px}
 body.theme-notion .card{box-shadow:none;border:1px solid var(--line)}

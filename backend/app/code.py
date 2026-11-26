@@ -378,16 +378,18 @@ def _user_content(user: str, images: list[str] | None, kind: str) -> str | list[
     return [*blocks, {"type": "text", "text": user}]
 
 
-async def _stream(system: str, user: str, images: list[str] | None = None) -> AsyncIterator[str]:
+async def _stream(system: str, user: str, images: list[str] | None = None, edit: bool = False) -> AsyncIterator[str]:
     """`images`: data URLs the user attached to this request (only the calls that do the request
-    get them; repair passes don't need to look again)."""
+    get them; repair passes don't need to look again). `edit`: a SEARCH/REPLACE edit, which runs on
+    the faster edit model; new pages and full rewrites run on the main code model."""
     s = get_settings()
+    model = s.openai_code_edit_model if edit else s.openai_code_model
     if s.openai_api_key and s.ai_provider != "anthropic":
         if "openai" not in _clients:
             _clients["openai"] = openai.AsyncOpenAI(api_key=s.openai_api_key, base_url=s.openai_base_url or None, timeout=120)
         client: openai.AsyncOpenAI = _clients["openai"]  # type: ignore[assignment]
         stream = await client.responses.create(
-            model=s.openai_code_model,
+            model=model,
             instructions=system,
             input=[{"role": "user", "content": _user_content(user, images, "openai")}] if images else user,
             reasoning={"effort": s.openai_code_reasoning},
@@ -402,7 +404,7 @@ async def _stream(system: str, user: str, images: list[str] | None = None) -> As
             elif ev.type == "response.completed" and ev.response.usage:
                 u = ev.response.usage
                 det = getattr(u, "input_tokens_details", None)
-                _record(s.openai_code_model, u.input_tokens, getattr(det, "cached_tokens", 0) or 0, u.output_tokens)
+                _record(model, u.input_tokens, getattr(det, "cached_tokens", 0) or 0, u.output_tokens)
             elif ev.type in ("response.failed", "error"):
                 raise RuntimeError(str(getattr(ev, "error", ev)))
         return
@@ -461,7 +463,20 @@ def wants_photo_in_page(prompt: str) -> bool:
     return bool(_PLACE.search(prompt or ""))
 
 
-def _photo_note(images: list[str] | None, place: bool = False) -> str:
+# words that ask for the page to be laid out like the photo ("이렇게 생긴 위클리")
+_LAYOUT = re.compile(r"이렇게\s*생긴|이렇게\s*만들|이런\s*(모양|구성|레이아웃|배치|식|느낌의?\s*구성)|(사진|이미지|그림|이거|이것|요거)\s*처럼|똑같이|비슷하게|따라\s*(만들|해)|같은\s*(구성|모양|레이아웃|배치)")
+
+
+def wants_photo_layout(prompt: str) -> bool:
+    return bool(_LAYOUT.search(prompt or ""))
+
+
+_MOOD = ("`<!-- 무드: -->` 주석에 사진에서 읽은 것을 먼저 적는다: 꾸밈 정도(플레인/꾸밈), 주요 색 2~3개(hex). "
+         "사진이 플레인·미니멀하면 테마 클래스와 장식 없이 seyo 기본 그대로 두고 색만 맞춘다. "
+         "사진이 분명히 꾸며져 있을 때만(체크·리본·스티커·빈티지 등) 가장 가까운 테마 하나를 고른다. ")
+
+
+def _photo_note(images: list[str] | None, place: bool = False, layout: bool = False) -> str:
     if not images:
         return ""
     n = len(images)
@@ -469,9 +484,14 @@ def _photo_note(images: list[str] | None, place: bool = False) -> str:
         names = ", ".join(f"{{{{photo{i + 1}}}}}" for i in range(n))
         return (f"\n\n(사용자가 사진 {n}장을 함께 보냈고, 요청에 그 사진을 쓰는 방법이 있어요. 그대로 따른다. "
                 f"사진 자체를 넣는 곳의 src에는 {names}를 그대로 쓴다. 나머지 구조는 seyo 기준 그대로, 사진은 무드만 참고한다.)")
+    if layout:
+        return (f"\n\n(사용자가 사진 {n}장을 보내고 '이렇게 생긴' 페이지를 원해요. 사진 자체는 페이지에 넣지 않는다. "
+                "먼저 `<!-- 구성: -->` 주석에 사진의 영역을 위에서 아래로 빠짐없이 적는다(예: 헤더 · 7열 요일 · 칸마다 할 일 목록 · 시간대 격자 · 메모 · 미니 달력). "
+                "그 영역과 배치(열 수, 순서, 비율)를 그대로 만들고 각 영역이 실제로 동작하게 한다. 스킬의 기본 뼈대보다 사진의 구성이 우선이다. "
+                "글꼴·색·간격·키트 컴포넌트는 seyo 기준(고딕, 플레인)으로 입힌다. 사진 속 글자·할 일·로고·캐릭터는 베끼지 않고 한국어 예시나 빈 칸으로 둔다. "
+                + _MOOD + ")")
     return (f"\n\n(사용자가 사진 {n}장을 함께 보냈어요. 무드 참고용이에요. 사진 자체는 페이지에 넣지 않는다. "
-            "`<!-- 무드: -->` 주석에 가장 가까운 테마·색 2~3개·장식 느낌을 먼저 적고, 레이아웃·구조·간격은 seyo 기준(스킬과 키트) 그대로 두고 "
-            "테마와 강조색, 장식만 그 무드로 맞춘다. 사진의 배치를 따라 하지 않는다.)")
+            + _MOOD + "레이아웃·구조·간격은 seyo 기준(스킬과 키트) 그대로 두고 사진의 배치를 따라 하지 않는다.)")
 
 
 def _ev(**kw) -> str:
@@ -485,7 +505,7 @@ async def _fix(html: str, issues: list[str], skills: list[Skill]) -> str:
         buf = [d async for d in _stream(rewrite_system(), f"{_topics(skills)}지금 파일 (중간에 끊김):\n{html}\n\n{ask}\n더 짧고 간결하게 처음부터 다시 써 주세요.")]
         new, _ = split_created("".join(buf))
         return new if "</html>" in new.lower() else html
-    buf = [d async for d in _stream(edit_system(), f"지금 파일:\n{html}\n\n{ask}")]
+    buf = [d async for d in _stream(edit_system(), f"지금 파일:\n{html}\n\n{ask}", edit=True)]
     new, _, n = apply_blocks(html, "".join(buf))
     return new if new and n else html
 
@@ -545,7 +565,7 @@ async def run(prompt: str, html: str | None, name: str | None = None, page: dict
     if html:
         html, kept = stash_images(html)
     place = bool(images) and wants_photo_in_page(prompt)
-    prompt = prompt + _photo_note(images, place)
+    prompt = prompt + _photo_note(images, place, bool(images) and wants_photo_layout(prompt))
     placed = images if place else []  # only a request that asks for it gets the photo itself
     try:
         title = re.search(r"<title>(.*?)</title>", html or "", re.I | re.S)
@@ -576,7 +596,7 @@ async def run(prompt: str, html: str | None, name: str | None = None, page: dict
         before = set(lint(html))
         user = f"{topics}지금 파일:\n{html}\n\n요청: {prompt}"
         buf = []
-        async for d in _stream(edit_system(), user, images):
+        async for d in _stream(edit_system(), user, images, edit=True):
             buf.append(d)
             yield _ev(t="code", d=d)
         out = "".join(buf)
@@ -591,7 +611,7 @@ async def run(prompt: str, html: str | None, name: str | None = None, page: dict
             new, n = part, ok
         elif new is None or n == 0:
             ask = f"{topics}지금 파일:\n{base}\n\n요청: {prompt}" + _retry_note(failed, partial=bool(ok))
-            again = "".join([d async for d in _stream(edit_system(), ask, images)])
+            again = "".join([d async for d in _stream(edit_system(), ask, images, edit=True)])
             new, s2, n = apply_blocks(base, again)
             if new is None and ok:
                 more, n2, still = apply_partial(base, again)
